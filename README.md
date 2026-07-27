@@ -94,6 +94,8 @@ npm run dev
 ```bash
 firebase emulators:start --only firestore,functions
 ```
+// netstat -ano | findstr :8080 
+// taskkill /PID ... /F
 
 ### Mobile
 ```bash
