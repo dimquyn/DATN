@@ -1,20 +1,24 @@
-import { StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { Ticket } from "../../types/ticket";
 import { getTicketStatusLabel } from "../../constants/ticket-status";
 import { formatRelativeTicketTime } from "../../utils/format-ticket-date";
 
 interface TicketCardProps {
   ticket: Ticket;
+  onPress?: () => void;
 }
 
-export function TicketCard({ ticket }: TicketCardProps) {
+export function TicketCard({ ticket, onPress }: TicketCardProps) {
   const displayName = ticket.customerName?.trim() || "Khách hàng";
   const displayContent = ticket.content?.trim() || "Không có nội dung";
   const displayTime = formatRelativeTicketTime(ticket.createdAt);
   const statusLabel = getTicketStatusLabel(ticket.status);
 
   return (
-    <View style={styles.card}>
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.card, pressed ? styles.cardPressed : null]}
+    >
       <View style={styles.iconWrapper}>
         <Text style={styles.iconGlyph}>🎫</Text>
       </View>
@@ -35,7 +39,7 @@ export function TicketCard({ ticket }: TicketCardProps) {
           </View>
         </View>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -50,6 +54,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#E5E7EB",
   },
+  cardPressed: {
+    backgroundColor: "#F9FAFB",
+  },
   iconWrapper: {
     width: 40,
     height: 40,
@@ -59,32 +66,17 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginRight: 12,
   },
-  iconGlyph: {
-    fontSize: 18,
-  },
-  body: {
-    flex: 1,
-  },
-  title: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  name: {
-    marginTop: 2,
-    fontSize: 13,
-    color: "#6B7280",
-  },
+  iconGlyph: { fontSize: 18 },
+  body: { flex: 1 },
+  title: { fontSize: 15, fontWeight: "700", color: "#111827" },
+  name: { marginTop: 2, fontSize: 13, color: "#6B7280" },
   footerRow: {
     marginTop: 10,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
-  time: {
-    fontSize: 12,
-    color: "#9CA3AF",
-  },
+  time: { fontSize: 12, color: "#9CA3AF" },
   statusBadge: {
     paddingHorizontal: 10,
     paddingVertical: 4,
@@ -93,9 +85,5 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#BFDBFE",
   },
-  statusBadgeText: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#1D4ED8",
-  },
+  statusBadgeText: { fontSize: 11, fontWeight: "700", color: "#1D4ED8" },
 });

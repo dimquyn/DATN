@@ -1,11 +1,12 @@
 import {
   collection,
+  doc,
+  getDoc,
   onSnapshot,
   orderBy,
   query,
   type DocumentData,
   type FirestoreError,
-  type QueryDocumentSnapshot,
   type Unsubscribe,
 } from "firebase/firestore";
 import { db } from "../firebase";
@@ -13,11 +14,9 @@ import type { Ticket } from "../types/ticket";
 
 const TICKETS_COLLECTION = "tickets";
 
-function mapDocToTicket(doc: QueryDocumentSnapshot<DocumentData>): Ticket {
-  const data = doc.data();
-
+function mapTicketData(id: string, data: DocumentData): Ticket {
   return {
-    id: doc.id,
+    id,
     customerName: data.customerName,
     phone: data.phone,
     email: data.email,
@@ -44,8 +43,23 @@ export function subscribeToTickets(
   return onSnapshot(
     ticketsQuery,
     (snapshot) => {
-      onData(snapshot.docs.map(mapDocToTicket));
+      onData(snapshot.docs.map((docSnap) => mapTicketData(docSnap.id, docSnap.data())));
     },
     onError
   );
+}
+
+/**
+ * Đọc 1 ticket theo document ID — dùng cho màn Ticket Detail (Sprint 3).
+ * Trả null nếu ticket không tồn tại. Không chứa UI logic.
+ */
+export async function getTicketById(ticketId: string): Promise<Ticket | null> {
+  const ticketRef = doc(db, TICKETS_COLLECTION, ticketId);
+  const snapshot = await getDoc(ticketRef);
+
+  if (!snapshot.exists()) {
+    return null;
+  }
+
+  return mapTicketData(snapshot.id, snapshot.data());
 }

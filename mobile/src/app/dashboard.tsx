@@ -7,7 +7,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { Redirect } from "expo-router";
+import { Redirect, useRouter } from "expo-router";
 import { useAuth } from "../contexts/AuthContext";
 import { getAuthErrorMessage } from "../utils/firebase-auth-error";
 import { FullScreenLoading } from "../components/common/FullScreenLoading";
@@ -17,6 +17,7 @@ import type { Ticket } from "../types/ticket";
 
 export default function DashboardScreen() {
   const { user, initializing, logout } = useAuth();
+  const router = useRouter();
 
   const [loggingOut, setLoggingOut] = useState<boolean>(false);
   const [logoutError, setLogoutError] = useState<string | null>(null);
@@ -108,7 +109,12 @@ export default function DashboardScreen() {
         <FlatList
           data={tickets}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <TicketCard ticket={item} />}
+          renderItem={({ item }) => (
+            <TicketCard
+              ticket={item}
+              onPress={() => router.push(`/ticket/${item.id}`)}
+            />
+          )}
           contentContainerStyle={styles.listContent}
           ListEmptyComponent={
             <View style={styles.centerBox}>
