@@ -1,15 +1,51 @@
-import { useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { Redirect } from "expo-router";
 import { useAuth } from "../contexts/AuthContext";
 import { getAuthErrorMessage } from "../utils/firebase-auth-error";
 import { FullScreenLoading } from "../components/common/FullScreenLoading";
+import { TicketCard } from "../components/cards/TicketCard";
+import { subscribeToTickets } from "../services/ticket.service";
+import type { Ticket } from "../types/ticket";
 
 export default function DashboardScreen() {
   const { user, initializing, logout } = useAuth();
 
   const [loggingOut, setLoggingOut] = useState<boolean>(false);
   const [logoutError, setLogoutError] = useState<string | null>(null);
+
+  const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+
+    setLoading(true);
+    setError(null);
+
+    const unsubscribe = subscribeToTickets(
+      (nextTickets) => {
+        setTickets(nextTickets);
+        setLoading(false);
+        setError(null);
+      },
+      (err) => {
+        console.error("Lỗi khi tải danh sách khiếu nại:", err);
+        setError("Không thể tải danh sách khiếu nại.");
+        setLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [user]);
 
   if (initializing) {
     return <FullScreenLoading message="Đang kiểm tra phiên đăng nhập..." />;
@@ -20,111 +56,101 @@ export default function DashboardScreen() {
   }
 
   const handleLogout = async (): Promise<void> => {
-    if (loggingOut) {
-      return;
-    }
+    if (loggingOut) return;
 
     setLogoutError(null);
     setLoggingOut(true);
 
     try {
       await logout();
-    } catch (error) {
-      setLogoutError(getAuthErrorMessage(error));
+    } catch (err) {
+      setLogoutError(getAuthErrorMessage(err));
       setLoggingOut(false);
     }
   };
 
   return (
     <View style={styles.screen}>
-      <View style={styles.content}>
-        <Text style={styles.title}>Tổng quan công việc</Text>
-        <Text style={styles.greeting}>Xin chào, nhân viên CSKH</Text>
-        <Text style={styles.email}>{user.email}</Text>
-
-        <View style={styles.statusCard}>
-          <Text style={styles.statusText}>Đăng nhập thành công</Text>
+      <View style={styles.header}>
+        <View style={styles.headerTextBlock}>
+          <Text style={styles.title}>Danh sách khiếu nại</Text>
+          <Text style={styles.subtitle}>
+            Các yêu cầu từ khách hàng được cập nhật theo thời gian thực
+          </Text>
         </View>
-
-        {logoutError !== null && (
-          <View style={styles.errorBox}>
-            <Text style={styles.errorText}>{logoutError}</Text>
-          </View>
-        )}
 
         <Pressable
           onPress={handleLogout}
           disabled={loggingOut}
-          style={[
-            styles.logoutButton,
-            loggingOut ? styles.logoutButtonDisabled : null,
-          ]}
+          style={[styles.logoutButton, loggingOut ? styles.logoutButtonDisabled : null]}
         >
           {loggingOut ? (
-            <View style={styles.logoutLoadingRow}>
-              <ActivityIndicator size="small" color="#FFFFFF" />
-              <Text style={styles.logoutButtonText}>Đang đăng xuất...</Text>
-            </View>
+            <ActivityIndicator size="small" color="#FFFFFF" />
           ) : (
             <Text style={styles.logoutButtonText}>Đăng xuất</Text>
           )}
         </Pressable>
       </View>
+
+      {logoutError !== null && (
+        <View style={styles.logoutErrorBox}>
+          <Text style={styles.logoutErrorText}>{logoutError}</Text>
+        </View>
+      )}
+
+      {loading ? (
+        <FullScreenLoading message="Đang tải danh sách khiếu nại..." />
+      ) : error ? (
+        <View style={styles.centerBox}>
+          <Text style={styles.errorTitle}>Không thể tải danh sách khiếu nại.</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={tickets}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => <TicketCard ticket={item} />}
+          contentContainerStyle={styles.listContent}
+          ListEmptyComponent={
+            <View style={styles.centerBox}>
+              <Text style={styles.emptyTitle}>Chưa có khiếu nại nào</Text>
+              <Text style={styles.emptySubtitle}>
+                Các khiếu nại mới từ khách hàng sẽ xuất hiện tại đây.
+              </Text>
+            </View>
+          }
+        />
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: "#F5F7FA",
+  screen: { flex: 1, backgroundColor: "#F5F7FA" },
+  header: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingTop: 24,
+    paddingBottom: 16,
+  },
+  headerTextBlock: { flex: 1, paddingRight: 12 },
+  title: { fontSize: 22, fontWeight: "700", color: "#111827" },
+  subtitle: { marginTop: 4, fontSize: 13, color: "#6B7280" },
+  logoutButton: {
+    height: 38,
+    minWidth: 90,
+    borderRadius: 8,
+    backgroundColor: "#DC2626",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 20,
+    paddingHorizontal: 14,
   },
-  content: {
-    width: "100%",
-    maxWidth: 440,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 28,
-    alignItems: "center",
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: "700",
-    color: "#111827",
-    textAlign: "center",
-  },
-  greeting: {
-    marginTop: 10,
-    fontSize: 15,
-    color: "#374151",
-    textAlign: "center",
-  },
-  email: {
-    marginTop: 4,
-    fontSize: 14,
-    color: "#6B7280",
-    textAlign: "center",
-  },
-  statusCard: {
-    marginTop: 20,
-    paddingHorizontal: 18,
-    paddingVertical: 12,
-    borderRadius: 10,
-    backgroundColor: "#ECFDF5",
-    borderWidth: 1,
-    borderColor: "#6EE7B7",
-  },
-  statusText: {
-    color: "#047857",
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  errorBox: {
-    marginTop: 16,
-    width: "100%",
+  logoutButtonDisabled: { backgroundColor: "#F1A9A9" },
+  logoutButtonText: { color: "#FFFFFF", fontSize: 13, fontWeight: "700" },
+  logoutErrorBox: {
+    marginHorizontal: 20,
+    marginBottom: 12,
     borderRadius: 10,
     backgroundColor: "#FEF2F2",
     borderWidth: 1,
@@ -132,31 +158,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
   },
-  errorText: {
-    color: "#B91C1C",
-    fontSize: 13,
-    textAlign: "center",
-  },
-  logoutButton: {
-    marginTop: 24,
-    width: "100%",
-    height: 46,
-    borderRadius: 10,
-    backgroundColor: "#DC2626",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  logoutButtonDisabled: {
-    backgroundColor: "#F1A9A9",
-  },
-  logoutLoadingRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  logoutButtonText: {
-    color: "#FFFFFF",
-    fontSize: 15,
-    fontWeight: "700",
-  },
+  logoutErrorText: { color: "#B91C1C", fontSize: 13 },
+  listContent: { paddingTop: 4, paddingBottom: 24, flexGrow: 1 },
+  centerBox: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 32, paddingTop: 60 },
+  errorTitle: { fontSize: 15, fontWeight: "700", color: "#B91C1C", textAlign: "center" },
+  emptyTitle: { fontSize: 15, fontWeight: "700", color: "#374151", textAlign: "center" },
+  emptySubtitle: { marginTop: 6, fontSize: 13, color: "#9CA3AF", textAlign: "center" },
 });
