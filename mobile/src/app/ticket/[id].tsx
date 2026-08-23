@@ -6,14 +6,15 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useAuth } from "../../contexts/AuthContext";
 import { FullScreenLoading } from "../../components/common/FullScreenLoading";
-import { getTicketById } from "../../services/ticket.service";
+import { getTicketById, updateTicketStatus } from "../../services/ticket.service";
 import { getAIResultById } from "../../services/ai-result.service";
-import { getTicketStatusLabel } from "../../constants/ticket-status";
+import { getNextTicketAction, getTicketStatusLabel } from "../../constants/ticket-status";
 import { formatTicketDate } from "../../utils/format-ticket-date";
 import type { Ticket } from "../../types/ticket";
 import type { AIPriority, AIResult } from "../../types/ai-result";
@@ -42,7 +43,16 @@ export default function TicketDetailScreen() {
   const [aiLoading, setAILoading] = useState<boolean>(false);
   const [aiError, setAIError] = useState<string | null>(null);
 
-  const [showReply, setShowReply] = useState<boolean>(false);
+  // Nhận xử lý / Đóng khiếu nại (hành động chung, không liên quan phản hồi)
+  const [updating, setUpdating] = useState<boolean>(false);
+  const [updateError, setUpdateError] = useState<string | null>(null);
+
+  // Phản hồi khách hàng (đề xuất AI có thể sửa, hoặc nội dung đã gửi chỉ đọc)
+  const [showReplySection, setShowReplySection] = useState<boolean>(false);
+  const [replyDraft, setReplyDraft] = useState<string>("");
+  const [replyDraftInitialized, setReplyDraftInitialized] = useState<boolean>(false);
+  const [confirmingReply, setConfirmingReply] = useState<boolean>(false);
+  const [confirmReplyError, setConfirmReplyError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user || !id) return;
@@ -111,6 +121,80 @@ export default function TicketDetailScreen() {
     };
   }, [user, id]);
 
+  // Khởi tạo nội dung ô nhập phản hồi từ aiResult.reply — chỉ 1 lần,
+  // để không ghi đè nội dung nhân viên đang sửa dở.
+  useEffect(() => {
+    if (
+      aiResult &&
+      !replyDraftInitialized &&
+      (ticket?.status === "ai_analyzed" || ticket?.status === "in_progress")
+    ) {
+      setReplyDraft(aiResult.reply);
+      setReplyDraftInitialized(true);
+    }
+  }, [aiResult, ticket?.status, replyDraftInitialized]);
+
+  const handleAction = async () => {
+    if (!user || !ticket || updating) return;
+
+    const action = getNextTicketAction(ticket.status);
+    if (!action) return;
+
+    setUpdating(true);
+    setUpdateError(null);
+
+    try {
+      const options =
+        action.nextStatus === "in_progress" ? { assignedTo: user.uid } : undefined;
+
+      await updateTicketStatus(ticket.id, action.nextStatus, options);
+
+      setTicket((prev) =>
+        prev
+          ? {
+              ...prev,
+              status: action.nextStatus,
+              assignedTo: options?.assignedTo ?? prev.assignedTo,
+            }
+          : prev
+      );
+    } catch (err) {
+      console.error("Lỗi khi cập nhật trạng thái ticket:", err);
+      setUpdateError("Không thể cập nhật trạng thái. Vui lòng thử lại.");
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleConfirmReply = async () => {
+    if (!user || !ticket || confirmingReply) return;
+    if (ticket.status !== "in_progress") return;
+
+    const trimmed = replyDraft.trim();
+
+    if (trimmed.length === 0) {
+      setConfirmReplyError("Vui lòng nhập nội dung phản hồi trước khi xác nhận.");
+      return;
+    }
+
+    setConfirmingReply(true);
+    setConfirmReplyError(null);
+
+    try {
+      await updateTicketStatus(ticket.id, "responded", { finalReply: trimmed });
+
+      setTicket((prev) =>
+        prev ? { ...prev, status: "responded", finalReply: trimmed } : prev
+      );
+      setReplyDraft(trimmed);
+    } catch (err) {
+      console.error("Lỗi khi xác nhận phản hồi:", err);
+      setConfirmReplyError("Không thể xác nhận phản hồi. Vui lòng thử lại.");
+    } finally {
+      setConfirmingReply(false);
+    }
+  };
+
   if (initializing) {
     return <FullScreenLoading message="Đang kiểm tra phiên đăng nhập..." />;
   }
@@ -123,10 +207,19 @@ export default function TicketDetailScreen() {
     return <FullScreenLoading message="Đang tải chi tiết khiếu nại..." />;
   }
 
+  const isEditablePhase =
+    ticket?.status === "ai_analyzed" || ticket?.status === "in_progress";
+  const isRespondedPhase = ticket?.status === "responded" || ticket?.status === "closed";
+  const showReplyToggle = !!ticket && ((isEditablePhase && !!aiResult) || isRespondedPhase);
+
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backButton} hitSlop={8}>
+        <Pressable
+  onPress={() => router.replace("/dashboard")}
+  style={styles.backButton}
+  hitSlop={8}
+>
           <Text style={styles.backButtonText}>←</Text>
         </Pressable>
         <Text style={styles.headerTitle}>Chi tiết ticket</Text>
@@ -192,6 +285,17 @@ export default function TicketDetailScreen() {
               </View>
             </View>
 
+            {/* Người xử lý (Sprint 4) */}
+            {ticket.assignedTo && (
+              <View style={styles.card}>
+                <InfoRow
+                  label="NGƯỜI XỬ LÝ"
+                  value={ticket.assignedTo === user.uid ? "Bạn" : ticket.assignedTo}
+                  isLast
+                />
+              </View>
+            )}
+
             {/* Nội dung khiếu nại */}
             <View style={styles.card}>
               <Text style={styles.sectionTitle}>NỘI DUNG KHIẾU NẠI</Text>
@@ -220,24 +324,7 @@ export default function TicketDetailScreen() {
                   <FieldBlock label="PHÂN LOẠI" value={aiResult.category} />
                   <FieldBlock label="MỨC ĐỘ ƯU TIÊN" value={aiResult.priority} />
                   <FieldBlock label="CẢM XÚC KHÁCH HÀNG" value={aiResult.sentiment} />
-                  <FieldBlock label="TÓM TẮT" value={aiResult.summary} />
-                  <FieldBlock label="HƯỚNG XỬ LÝ GỢI Ý" value={aiResult.suggestion} isLast />
-
-                  <Pressable
-                    onPress={() => setShowReply((prev) => !prev)}
-                    style={styles.replyButton}
-                  >
-                    <Text style={styles.replyButtonText}>
-                      {showReply ? "Ẩn phản hồi đề xuất" : "Xem phản hồi đề xuất"}
-                    </Text>
-                  </Pressable>
-
-                  {showReply && (
-                    <View style={styles.replyBox}>
-                      <Text style={styles.replyLabel}>PHẢN HỒI ĐỀ XUẤT</Text>
-                      <Text style={styles.replyText}>{aiResult.reply}</Text>
-                    </View>
-                  )}
+                  <FieldBlock label="TÓM TẮT" value={aiResult.summary} isLast />
                 </View>
               ) : null
             ) : ticket.lastAIError ? (
@@ -249,6 +336,126 @@ export default function TicketDetailScreen() {
                 <Text style={styles.pendingText}>AI đang phân tích khiếu nại.</Text>
               </View>
             )}
+
+            {/* Phản hồi khách hàng (Sprint 4) */}
+            {showReplyToggle && (
+              <View style={styles.card}>
+                <Pressable
+                  onPress={() => setShowReplySection((prev) => !prev)}
+                  style={styles.replyButton}
+                >
+                  <Text style={styles.replyButtonText}>
+                    {isRespondedPhase
+                      ? showReplySection
+                        ? "Ẩn nội dung đã phản hồi"
+                        : "Xem nội dung đã phản hồi"
+                      : showReplySection
+                      ? "Ẩn phản hồi đề xuất"
+                      : "Xem phản hồi đề xuất"}
+                  </Text>
+                </Pressable>
+
+                {showReplySection && (
+                  <View style={styles.replyBox}>
+                    {isRespondedPhase ? (
+                      ticket.finalReply && ticket.finalReply.trim().length > 0 ? (
+                        <>
+                          <Text style={styles.replyLabel}>NỘI DUNG ĐÃ PHẢN HỒI</Text>
+                          <Text style={styles.replyText}>{ticket.finalReply}</Text>
+                        </>
+                      ) : (
+                        <Text style={styles.pendingText}>
+                          Ticket này chưa có nội dung phản hồi thực tế được lưu.
+                        </Text>
+                      )
+                    ) : (
+                      <>
+                        <Text style={styles.replyLabel}>
+                          PHẢN HỒI ĐỀ XUẤT (CÓ THỂ CHỈNH SỬA)
+                        </Text>
+                        <TextInput
+                          style={styles.replyInput}
+                          multiline
+                          value={replyDraft}
+                          onChangeText={setReplyDraft}
+                          editable={!confirmingReply}
+                        />
+
+                        {confirmReplyError && (
+                          <Text style={styles.actionErrorText}>{confirmReplyError}</Text>
+                        )}
+
+                        {ticket.status === "in_progress" ? (
+                          <Pressable
+                            onPress={handleConfirmReply}
+                            disabled={confirmingReply || replyDraft.trim().length === 0}
+                            style={[
+                              styles.actionButton,
+                              confirmingReply || replyDraft.trim().length === 0
+                                ? styles.actionButtonDisabled
+                                : null,
+                            ]}
+                          >
+                            {confirmingReply ? (
+                              <ActivityIndicator size="small" color="#FFFFFF" />
+                            ) : (
+                              <Text style={styles.actionButtonText}>Xác nhận đã phản hồi</Text>
+                            )}
+                          </Pressable>
+                        ) : (
+                          <Text style={styles.hintText}>
+                            Nhận xử lý ticket trước khi phản hồi.
+                          </Text>
+                        )}
+                      </>
+                    )}
+                  </View>
+                )}
+              </View>
+            )}
+
+            {/* Hành động Nhận xử lý / Đóng khiếu nại (Sprint 4) */}
+            {(() => {
+              const action = getNextTicketAction(ticket.status);
+
+              if (!action) {
+                return null;
+              }
+
+              const isClaimAction = ticket.status === "ai_analyzed";
+              const isTakenByOther =
+                isClaimAction && !!ticket.assignedTo && ticket.assignedTo !== user.uid;
+
+              if (isTakenByOther) {
+                return (
+                  <View style={styles.card}>
+                    <Text style={styles.pendingText}>
+                      Ticket này đã được nhận xử lý bởi nhân viên khác.
+                    </Text>
+                  </View>
+                );
+              }
+
+              return (
+                <View style={styles.card}>
+                  {updateError && <Text style={styles.actionErrorText}>{updateError}</Text>}
+                  <Pressable
+                    onPress={handleAction}
+                    disabled={updating}
+                    style={[
+                      styles.actionButton,
+                      updating ? styles.actionButtonDisabled : null,
+                    ]}
+                  >
+                    {updating ? (
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                    ) : (
+                      <Text style={styles.actionButtonText}>{action.label}</Text>
+                    )}
+                  </Pressable>
+                </View>
+              );
+            })()}
           </View>
         </ScrollView>
       )}
@@ -430,7 +637,6 @@ const styles = StyleSheet.create({
     color: "#111827",
   },
   replyButton: {
-    marginTop: 16,
     height: 42,
     borderRadius: 10,
     backgroundColor: "#111827",
@@ -440,9 +646,6 @@ const styles = StyleSheet.create({
   replyButtonText: { color: "#FFFFFF", fontSize: 13, fontWeight: "700" },
   replyBox: {
     marginTop: 12,
-    backgroundColor: "#F9FAFB",
-    borderRadius: 10,
-    padding: 14,
   },
   replyLabel: {
     fontSize: 11,
@@ -452,10 +655,46 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   replyText: { fontSize: 14, lineHeight: 20, color: "#111827" },
+  replyInput: {
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    borderRadius: 10,
+    padding: 12,
+    fontSize: 14,
+    lineHeight: 20,
+    color: "#111827",
+    minHeight: 120,
+    textAlignVertical: "top",
+    backgroundColor: "#F9FAFB",
+    marginBottom: 12,
+  },
+  hintText: {
+    fontSize: 12,
+    color: "#9CA3AF",
+    fontStyle: "italic",
+    textAlign: "center",
+  },
   centerBox: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 32,
+  },
+  actionButton: {
+    height: 46,
+    borderRadius: 10,
+    backgroundColor: "#1667B1",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  actionButtonDisabled: {
+    opacity: 0.6,
+  },
+  actionButtonText: { color: "#FFFFFF", fontSize: 14, fontWeight: "700" },
+  actionErrorText: {
+    fontSize: 13,
+    color: "#B91C1C",
+    marginBottom: 10,
+    textAlign: "center",
   },
 });

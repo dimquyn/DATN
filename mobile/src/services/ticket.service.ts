@@ -5,12 +5,14 @@ import {
   onSnapshot,
   orderBy,
   query,
+  serverTimestamp,
+  updateDoc,
   type DocumentData,
   type FirestoreError,
   type Unsubscribe,
 } from "firebase/firestore";
 import { db } from "../firebase";
-import type { Ticket } from "../types/ticket";
+import type { Ticket, TicketStatus } from "../types/ticket";
 
 const TICKETS_COLLECTION = "tickets";
 
@@ -25,6 +27,7 @@ function mapTicketData(id: string, data: DocumentData): Ticket {
     status: data.status,
     assignedTo: data.assignedTo ?? null,
     aiResultId: data.aiResultId ?? null,
+    finalReply: data.finalReply ?? null,
     createdAt: data.createdAt ?? null,
     updatedAt: data.updatedAt ?? null,
     lastAIError: data.lastAIError,
@@ -62,4 +65,45 @@ export async function getTicketById(ticketId: string): Promise<Ticket | null> {
   }
 
   return mapTicketData(snapshot.id, snapshot.data());
+}
+
+export interface UpdateTicketStatusOptions {
+  /** Chỉ truyền khi nhân viên "Nhận xử lý" (ai_analyzed -> in_progress). */
+  assignedTo?: string;
+  /**
+   * Nội dung phản hồi thực tế đã gửi khách hàng, ghi vào tickets.finalReply
+   * khi xác nhận đã phản hồi (in_progress -> responded).
+   * KHÔNG liên quan và KHÔNG ghi đè ai_results.reply.
+   */
+  finalReply?: string;
+}
+
+/**
+ * Cập nhật trạng thái ticket trên Firestore (Sprint 4).
+ * Luôn ghi updatedAt bằng serverTimestamp(). assignedTo/finalReply chỉ được
+ * ghi khi được truyền vào, tương ứng đúng bước chuyển trạng thái gọi hàm này.
+ * Không tự validate transition ở đây — UI (Ticket Detail) chịu trách nhiệm
+ * chỉ cho phép gọi đúng bước hợp lệ theo trạng thái hiện tại.
+ */
+export async function updateTicketStatus(
+  ticketId: string,
+  status: TicketStatus,
+  options?: UpdateTicketStatusOptions
+): Promise<void> {
+  const ticketRef = doc(db, TICKETS_COLLECTION, ticketId);
+
+  const updates: Record<string, unknown> = {
+    status,
+    updatedAt: serverTimestamp(),
+  };
+
+  if (options?.assignedTo) {
+    updates.assignedTo = options.assignedTo;
+  }
+
+  if (options?.finalReply !== undefined) {
+    updates.finalReply = options.finalReply;
+  }
+
+  await updateDoc(ticketRef, updates);
 }

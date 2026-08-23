@@ -19,6 +19,7 @@ export interface Ticket {
   status: TicketStatus;
   assignedTo: string | null;
   aiResultId: string | null;
+  finalReply: string | null;
   createdAt: Timestamp | null;
   updatedAt: Timestamp | null;
   lastAIError?: string;

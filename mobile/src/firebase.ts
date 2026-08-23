@@ -1,3 +1,5 @@
+import { Platform } from "react-native";
+import Constants from "expo-constants";
 import { getApp, getApps, initializeApp } from "firebase/app";
 import { connectAuthEmulator, getAuth } from "firebase/auth";
 import { connectFirestoreEmulator, getFirestore } from "firebase/firestore";
@@ -20,6 +22,33 @@ export const auth = getAuth(app);
 export const db = getFirestore(app);
 
 /*
+ * Xác định host để kết nối Firebase Emulator:
+ * - Web (chạy trên PC): 127.0.0.1 hoạt động bình thường.
+ * - Native (Expo Go trên thiết bị thật/máy ảo): 127.0.0.1 trỏ về chính
+ *   thiết bị đó, không phải PC đang chạy Emulator, nên cần lấy đúng IP LAN
+ *   của PC. Constants.expoConfig?.hostUri chứa địa chỉ Metro Bundler mà
+ *   thiết bị đã dùng để kết nối (vd "192.168.103.100:8081"), nên tách phần
+ *   host ra là có ngay IP LAN đúng — không cần hard-code IP.
+ */
+function getEmulatorHost(): string {
+  if (Platform.OS === "web") {
+    return "127.0.0.1";
+  }
+
+  const hostUri = Constants.expoConfig?.hostUri;
+  const host = hostUri?.split(":")[0];
+
+  if (!host) {
+    console.warn(
+      "Không xác định được IP LAN từ Expo hostUri, dùng 127.0.0.1 (có thể không kết nối được Emulator trên thiết bị thật)."
+    );
+    return "127.0.0.1";
+  }
+
+  return host;
+}
+
+/*
  * Dùng globalThis thay vì biến module-scope thông thường để cờ này
  * không bị reset khi Expo Fast Refresh thay thế lại module trong lúc
  * phát triển — tránh gọi connectAuthEmulator/connectFirestoreEmulator
@@ -31,8 +60,10 @@ declare global {
 }
 
 if (__DEV__ && !globalThis.__FIREBASE_EMULATORS_CONNECTED__) {
-  connectAuthEmulator(auth, "http://127.0.0.1:9099");
-  connectFirestoreEmulator(db, "127.0.0.1", 8080);
+  const emulatorHost = getEmulatorHost();
+
+  connectAuthEmulator(auth, `http://${emulatorHost}:9099`);
+  connectFirestoreEmulator(db, emulatorHost, 8080);
 
   globalThis.__FIREBASE_EMULATORS_CONNECTED__ = true;
 }
