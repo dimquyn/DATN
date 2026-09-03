@@ -121,7 +121,7 @@ Link: https://drive.google.com/file/d/1vxjmFwTVQcZeqO1kkqBTA9GU1ycTZ_te/view?usp
 | Website | ✅ Hoàn thành |
 | Firebase | ✅ Hoàn thành |
 | AI Pipeline | ✅ Hoàn thành |
-| React Native | 🚧 Đang phát triển |
+| React Native | ✅ Hoàn thành chức năng chính |
 
 ---
 ## Tác giả
