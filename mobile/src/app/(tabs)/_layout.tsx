@@ -1,4 +1,5 @@
 import { Text } from "react-native";
+import type { ColorValue } from "react-native";
 import { Redirect, Tabs } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../contexts/AuthContext";
@@ -11,7 +12,7 @@ const TAB_ICONS: Record<string, string> = {
   profile: "👤",
 };
 
-function TabIcon({ route, color }: { route: string; color: string }) {
+function TabIcon({ route, color }: { route: string; color: ColorValue }) {
   return <Text style={{ fontSize: 20, color }}>{TAB_ICONS[route] ?? "•"}</Text>;
 }
 

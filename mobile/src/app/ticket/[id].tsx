@@ -49,14 +49,16 @@ export default function TicketDetailScreen() {
   const [confirmReplyError, setConfirmReplyError] = useState<string | null>(null);
 
   // Cuộn ô "Phản hồi đề xuất" lên trên bàn phím khi được focus, giống app nhắn tin.
+  // Đo qua scrollContainerRef (View bọc ngoài) vì ScrollView không có sẵn measureInWindow.
   const scrollViewRef = useRef<ScrollView>(null);
+  const scrollContainerRef = useRef<View>(null);
   const replyInputRef = useRef<TextInput>(null);
   const scrollOffsetRef = useRef<number>(0);
 
   const handleReplyInputFocus = () => {
     requestAnimationFrame(() => {
       replyInputRef.current?.measureInWindow((_x, y) => {
-        scrollViewRef.current?.measureInWindow((_sx, sy) => {
+        scrollContainerRef.current?.measureInWindow((_sx, sy) => {
           const targetOffset = scrollOffsetRef.current + (y - sy) - 24;
           scrollViewRef.current?.scrollTo({ y: Math.max(targetOffset, 0), animated: false });
         });
@@ -250,6 +252,7 @@ export default function TicketDetailScreen() {
           style={styles.keyboardAvoider}
           behavior={Platform.OS === "ios" ? "padding" : undefined}
         >
+        <View ref={scrollContainerRef} style={styles.keyboardAvoider}>
         <ScrollView
           ref={scrollViewRef}
           contentContainerStyle={styles.scrollContent}
@@ -495,6 +498,7 @@ export default function TicketDetailScreen() {
             })()}
           </View>
         </ScrollView>
+        </View>
         </KeyboardAvoidingView>
       )}
     </View>
