@@ -2,7 +2,10 @@ import { Platform } from "react-native";
 import Constants from "expo-constants";
 import { getApp, getApps, initializeApp } from "firebase/app";
 import { connectAuthEmulator, getAuth } from "firebase/auth";
-import { connectFirestoreEmulator, getFirestore } from "firebase/firestore";
+import {
+  connectFirestoreEmulator,
+  initializeFirestore,
+} from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
@@ -19,7 +22,19 @@ const firebaseConfig = {
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
-export const db = getFirestore(app);
+
+/*
+ * Trên native (iOS/Android qua Expo Go/Hermes), transport WebChannel mặc
+ * định của Firestore (dựa vào fetch/XHR streaming) không hoạt động ổn định
+ * và liên tục báo "WebChannelConnection RPC 'Listen' stream ... transport
+ * errored" dù mạng và Auth Emulator vẫn kết nối bình thường. Bật long
+ * polling để Firestore dùng request/response thường thay vì streaming.
+ * Trên web thì transport mặc định đã ổn nên không cần bật.
+ */
+export const db = initializeFirestore(
+  app,
+  Platform.OS === "web" ? {} : { experimentalForceLongPolling: true }
+);
 
 /*
  * Xác định host để kết nối Firebase Emulator:
