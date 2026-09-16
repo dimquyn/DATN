@@ -11,6 +11,7 @@ export type TicketStatus =
 
 export interface Ticket {
   id: string;
+  code: string | null;
   customerName: string;
   phone: string;
   email: string;

@@ -2,6 +2,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { Ticket } from "../../types/ticket";
 import { getTicketStatusLabel } from "../../constants/ticket-status";
 import { formatRelativeTicketTime } from "../../utils/format-ticket-date";
+import { getDisplayTicketCode } from "../../utils/ticket-code";
 
 interface TicketCardProps {
   ticket: Ticket;
@@ -9,8 +10,8 @@ interface TicketCardProps {
 }
 
 export function TicketCard({ ticket, onPress }: TicketCardProps) {
+  const displayCode = getDisplayTicketCode(ticket);
   const displayName = ticket.customerName?.trim() || "Khách hàng";
-  const displayContent = ticket.content?.trim() || "Không có nội dung";
   const displayTime = formatRelativeTicketTime(ticket.createdAt);
   const statusLabel = getTicketStatusLabel(ticket.status);
 
@@ -25,7 +26,7 @@ export function TicketCard({ ticket, onPress }: TicketCardProps) {
 
       <View style={styles.body}>
         <Text style={styles.title} numberOfLines={1}>
-          {displayContent}
+          {displayCode}
         </Text>
         <Text style={styles.name} numberOfLines={1}>
           {displayName}

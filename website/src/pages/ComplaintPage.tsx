@@ -10,6 +10,7 @@ export default function ComplaintPage() {
     submitting,
     submitted,
     submitError,
+    submittedCode,
     channelOptions,
     handleChange,
     handleBlur,
@@ -139,6 +140,11 @@ export default function ComplaintPage() {
             <h2 className="text-violet-600 text-xl sm:text-2xl font-bold mb-2 sm:mb-3">
               Gửi thành công!
             </h2>
+            {submittedCode && (
+              <p className="text-gray-700 text-sm mb-3">
+                Mã yêu cầu của bạn: <span className="font-bold text-violet-600">{submittedCode}</span>
+              </p>
+            )}
             <p className="text-gray-500 text-sm mb-6 sm:mb-8 leading-relaxed">
               Chúng tôi sẽ liên hệ với bạn sớm nhất có thể!
             </p>

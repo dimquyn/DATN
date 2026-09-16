@@ -5,6 +5,7 @@ export const TICKET_CHANNELS = ["Website", "Facebook", "Zalo"] as const;
 export type TicketChannel = (typeof TICKET_CHANNELS)[number];
 
 export interface Ticket {
+  code: string;
   customerName: string;
   phone: string;
   email: string;

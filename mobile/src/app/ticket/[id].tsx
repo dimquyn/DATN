@@ -16,13 +16,9 @@ import { getTicketById, updateTicketStatus } from "../../services/ticket.service
 import { getAIResultById } from "../../services/ai-result.service";
 import { getNextTicketAction, getTicketStatusLabel } from "../../constants/ticket-status";
 import { formatTicketDate } from "../../utils/format-ticket-date";
+import { getDisplayTicketCode } from "../../utils/ticket-code";
 import type { Ticket } from "../../types/ticket";
 import type { AIPriority, AIResult } from "../../types/ai-result";
-
-// Chỉ để hiển thị — KHÔNG ghi ngược vào Firestore, Firestore không có field mã ticket.
-function getDisplayTicketCode(ticketId: string): string {
-  return `#TK-${ticketId.slice(-6).toUpperCase()}`;
-}
 
 const PRIORITY_STYLES: Record<AIPriority, { bg: string; border: string; text: string }> = {
   "High Priority": { bg: "#FEF2F2", border: "#FCA5A5", text: "#B91C1C" },
@@ -238,7 +234,7 @@ export default function TicketDetailScreen() {
               <View style={styles.codeRow}>
                 <View>
                   <Text style={styles.labelText}>MÃ YÊU CẦU</Text>
-                  <Text style={styles.codeText}>{getDisplayTicketCode(ticket.id)}</Text>
+                  <Text style={styles.codeText}>{getDisplayTicketCode(ticket)}</Text>
                 </View>
 
                 {aiResult && (
