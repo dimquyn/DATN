@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
@@ -10,6 +11,7 @@ import {
   View,
 } from "react-native";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../contexts/AuthContext";
 import { FullScreenLoading } from "../../components/common/FullScreenLoading";
 import { getTicketById, updateTicketStatus } from "../../services/ticket.service";
@@ -30,6 +32,7 @@ export default function TicketDetailScreen() {
   const { user, initializing } = useAuth();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const insets = useSafeAreaInsets();
 
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [ticketLoading, setTicketLoading] = useState<boolean>(true);
@@ -49,6 +52,22 @@ export default function TicketDetailScreen() {
   const [replyDraftInitialized, setReplyDraftInitialized] = useState<boolean>(false);
   const [confirmingReply, setConfirmingReply] = useState<boolean>(false);
   const [confirmReplyError, setConfirmReplyError] = useState<string | null>(null);
+
+  // Cuộn ô "Phản hồi đề xuất" lên trên bàn phím khi được focus, giống app nhắn tin.
+  const scrollViewRef = useRef<ScrollView>(null);
+  const replyInputRef = useRef<TextInput>(null);
+  const scrollOffsetRef = useRef<number>(0);
+
+  const handleReplyInputFocus = () => {
+    requestAnimationFrame(() => {
+      replyInputRef.current?.measureInWindow((_x, y) => {
+        scrollViewRef.current?.measureInWindow((_sx, sy) => {
+          const targetOffset = scrollOffsetRef.current + (y - sy) - 24;
+          scrollViewRef.current?.scrollTo({ y: Math.max(targetOffset, 0), animated: true });
+        });
+      });
+    });
+  };
 
   useEffect(() => {
     if (!user || !id) return;
@@ -210,7 +229,7 @@ export default function TicketDetailScreen() {
 
   return (
     <View style={styles.screen}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 14 }]}>
         <Pressable
   onPress={() => router.replace("/dashboard")}
   style={styles.backButton}
@@ -227,7 +246,19 @@ export default function TicketDetailScreen() {
           <Text style={styles.errorText}>{ticketError ?? "Không tìm thấy khiếu nại."}</Text>
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+        <KeyboardAvoidingView
+          style={styles.keyboardAvoider}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        >
+        <ScrollView
+          ref={scrollViewRef}
+          contentContainerStyle={styles.scrollContent}
+          onScroll={(e) => {
+            scrollOffsetRef.current = e.nativeEvent.contentOffset.y;
+          }}
+          scrollEventThrottle={16}
+          keyboardShouldPersistTaps="handled"
+        >
           <View style={styles.contentWrapper}>
             {/* Mã yêu cầu */}
             <View style={styles.card}>
@@ -370,10 +401,12 @@ export default function TicketDetailScreen() {
                           PHẢN HỒI ĐỀ XUẤT (CÓ THỂ CHỈNH SỬA)
                         </Text>
                         <TextInput
+                          ref={replyInputRef}
                           style={styles.replyInput}
                           multiline
                           value={replyDraft}
                           onChangeText={setReplyDraft}
+                          onFocus={handleReplyInputFocus}
                           editable={!confirmingReply}
                         />
 
@@ -454,6 +487,7 @@ export default function TicketDetailScreen() {
             })()}
           </View>
         </ScrollView>
+        </KeyboardAvoidingView>
       )}
     </View>
   );
@@ -497,11 +531,12 @@ const MAX_CONTENT_WIDTH = 820;
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: "#F7F8FA" },
+  keyboardAvoider: { flex: 1 },
   header: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingBottom: 14,
     backgroundColor: "#FFFFFF",
     borderBottomWidth: 1,
     borderBottomColor: "#E5E7EB",
