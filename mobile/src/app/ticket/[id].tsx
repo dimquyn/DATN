@@ -19,14 +19,9 @@ import { getAIResultById } from "../../services/ai-result.service";
 import { getNextTicketAction, getTicketStatusLabel } from "../../constants/ticket-status";
 import { formatTicketDate } from "../../utils/format-ticket-date";
 import { getDisplayTicketCode } from "../../utils/ticket-code";
+import { AI_PRIORITY_LABELS, AI_PRIORITY_STYLES } from "../../constants/ai-priority";
 import type { Ticket } from "../../types/ticket";
-import type { AIPriority, AIResult } from "../../types/ai-result";
-
-const PRIORITY_STYLES: Record<AIPriority, { bg: string; border: string; text: string }> = {
-  "High Priority": { bg: "#FEF2F2", border: "#FCA5A5", text: "#B91C1C" },
-  Medium: { bg: "#FFFBEB", border: "#FDE68A", text: "#B45309" },
-  Low: { bg: "#ECFDF5", border: "#6EE7B7", text: "#047857" },
-};
+import type { AIResult } from "../../types/ai-result";
 
 export default function TicketDetailScreen() {
   const { user, initializing } = useAuth();
@@ -63,7 +58,7 @@ export default function TicketDetailScreen() {
       replyInputRef.current?.measureInWindow((_x, y) => {
         scrollViewRef.current?.measureInWindow((_sx, sy) => {
           const targetOffset = scrollOffsetRef.current + (y - sy) - 24;
-          scrollViewRef.current?.scrollTo({ y: Math.max(targetOffset, 0), animated: true });
+          scrollViewRef.current?.scrollTo({ y: Math.max(targetOffset, 0), animated: false });
         });
       });
     });
@@ -159,8 +154,10 @@ export default function TicketDetailScreen() {
     setUpdateError(null);
 
     try {
-      const options =
-        action.nextStatus === "in_progress" ? { assignedTo: user.uid } : undefined;
+      const options = {
+        ...(action.nextStatus === "in_progress" ? { assignedTo: user.uid } : {}),
+        history: { actorName: user.email ?? "Nhân viên", ticketCode: ticket.code },
+      };
 
       await updateTicketStatus(ticket.id, action.nextStatus, options);
 
@@ -196,7 +193,10 @@ export default function TicketDetailScreen() {
     setConfirmReplyError(null);
 
     try {
-      await updateTicketStatus(ticket.id, "responded", { finalReply: trimmed });
+      await updateTicketStatus(ticket.id, "responded", {
+        finalReply: trimmed,
+        history: { actorName: user.email ?? "Nhân viên", ticketCode: ticket.code },
+      });
 
       setTicket((prev) =>
         prev ? { ...prev, status: "responded", finalReply: trimmed } : prev
@@ -231,7 +231,7 @@ export default function TicketDetailScreen() {
     <View style={styles.screen}>
       <View style={[styles.header, { paddingTop: insets.top + 14 }]}>
         <Pressable
-  onPress={() => router.replace("/dashboard")}
+  onPress={() => router.back()}
   style={styles.backButton}
   hitSlop={8}
 >
@@ -273,22 +273,30 @@ export default function TicketDetailScreen() {
                     style={[
                       styles.priorityBadge,
                       {
-                        backgroundColor: PRIORITY_STYLES[aiResult.priority].bg,
-                        borderColor: PRIORITY_STYLES[aiResult.priority].border,
+                        backgroundColor: AI_PRIORITY_STYLES[aiResult.priority].bg,
+                        borderColor: AI_PRIORITY_STYLES[aiResult.priority].border,
                       },
                     ]}
                   >
                     <Text
                       style={[
                         styles.priorityBadgeText,
-                        { color: PRIORITY_STYLES[aiResult.priority].text },
+                        { color: AI_PRIORITY_STYLES[aiResult.priority].text },
                       ]}
                     >
-                      {aiResult.priority}
+                      {AI_PRIORITY_LABELS[aiResult.priority]}
                     </Text>
                   </View>
                 )}
               </View>
+
+              <Pressable
+                onPress={() => router.push(`/ticket/history/${ticket.id}`)}
+                style={styles.historyLink}
+                hitSlop={8}
+              >
+                <Text style={styles.historyLinkText}>Xem lịch sử xử lý →</Text>
+              </Pressable>
             </View>
 
             {/* Thông tin khách hàng */}
@@ -600,6 +608,15 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "700",
     color: "#111827",
+  },
+  historyLink: {
+    marginTop: 12,
+    alignSelf: "flex-start",
+  },
+  historyLinkText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#1667B1",
   },
   priorityBadge: {
     paddingHorizontal: 12,

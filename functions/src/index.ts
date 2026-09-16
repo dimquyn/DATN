@@ -217,7 +217,18 @@ export const analyzeTicketWithAI = onDocumentCreated(
       await ticketRef.update({
         status: "ai_analyzed",
         aiResultId: aiResultRef.id,
+        // Lưu kèm priority ngay trên ticket (denormalize) để mobile hiển thị
+        // badge độ ưu tiên ở danh sách ticket mà không cần đọc thêm ai_results.
+        priority: aiResult.priority,
         updatedAt: FieldValue.serverTimestamp(),
+      });
+
+      await ticketRef.collection("history").add({
+        ticketId,
+        ticketCode: ticketData?.code ?? null,
+        action: "ai_analyzed",
+        actorName: "Hệ thống AI",
+        createdAt: FieldValue.serverTimestamp(),
       });
 
       logger.info(`[analyzeTicketWithAI] Ticket ${ticketId} đã phân tích AI thành công -> aiResultId: ${aiResultRef.id}`);

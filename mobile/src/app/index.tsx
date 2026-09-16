@@ -10,7 +10,7 @@ export default function IndexScreen() {
   }
 
   if (user) {
-    return <Redirect href="/dashboard" />;
+    return <Redirect href="/overview" />;
   }
 
   return <Redirect href="/login" />;

@@ -20,6 +20,7 @@ export interface Ticket {
   status: TicketStatus;
   assignedTo: string | null;
   aiResultId: string | null;
+  priority: "High Priority" | "Medium" | "Low" | null;
   finalReply: string | null;
   createdAt: Timestamp | null;
   updatedAt: Timestamp | null;

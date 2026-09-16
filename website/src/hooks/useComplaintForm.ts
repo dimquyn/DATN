@@ -13,6 +13,7 @@ async function createTicketWithCode(
   ticketData: Record<string, unknown>
 ): Promise<string> {
   const ticketRef = doc(collection(db, "tickets"));
+  const historyRef = doc(collection(ticketRef, "history"));
 
   return runTransaction(db, async (transaction) => {
     const counterSnap = await transaction.get(TICKETS_COUNTER_REF);
@@ -21,6 +22,13 @@ async function createTicketWithCode(
 
     transaction.set(TICKETS_COUNTER_REF, { count: nextNumber }, { merge: true });
     transaction.set(ticketRef, { ...ticketData, code });
+    transaction.set(historyRef, {
+      ticketId: ticketRef.id,
+      ticketCode: code,
+      action: "created",
+      actorName: "Hệ thống",
+      createdAt: serverTimestamp(),
+    });
 
     return code;
   });
