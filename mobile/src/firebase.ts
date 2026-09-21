@@ -74,7 +74,15 @@ declare global {
   var __FIREBASE_EMULATORS_CONNECTED__: boolean | undefined;
 }
 
-if (__DEV__ && !globalThis.__FIREBASE_EMULATORS_CONNECTED__) {
+/*
+ * Bật/tắt Emulator qua biến env riêng thay vì dựa vào __DEV__ — vì __DEV__
+ * vẫn là true khi chạy qua Expo Go/dev client để demo bằng dữ liệu Firebase
+ * THẬT (không phải lúc nào chạy bản dev cũng muốn nối Emulator). Đặt
+ * EXPO_PUBLIC_USE_FIREBASE_EMULATOR=true trong .env lúc phát triển local.
+ */
+const useEmulator = process.env.EXPO_PUBLIC_USE_FIREBASE_EMULATOR === "true";
+
+if (useEmulator && !globalThis.__FIREBASE_EMULATORS_CONNECTED__) {
   const emulatorHost = getEmulatorHost();
 
   connectAuthEmulator(auth, `http://${emulatorHost}:9099`);
