@@ -24,11 +24,16 @@ export const db = getFirestore(app);
 // nếu không client sẽ gọi nhầm region mặc định (us-central1) và luôn 404.
 export const functions = getFunctions(app, "asia-southeast1");
 
-// muốn quay lại Firestore thật thì cmt 3 dòng dưới đây
+// muốn quay lại Firestore thật thì cmt khối if dưới đây
 if (import.meta.env.DEV) {
-  connectFirestoreEmulator(db, "127.0.0.1", 8080);
-  connectFunctionsEmulator(functions, "127.0.0.1", 5001);
-  console.log("🔥 Connected to Firestore Emulator");
+  // window.location.hostname: "localhost" khi mở trên chính máy chạy
+  // Emulator, hoặc đúng IP LAN khi mở từ điện thoại/máy khác qua IP LAN của
+  // máy đó (vd http://192.168.x.x:5173) — không hard-code 127.0.0.1 vì lúc
+  // đó nó sẽ trỏ về chính điện thoại, nơi không có Emulator nào chạy cả.
+  const emulatorHost = window.location.hostname;
+  connectFirestoreEmulator(db, emulatorHost, 8080);
+  connectFunctionsEmulator(functions, emulatorHost, 5001);
+  console.log("🔥 Connected to Firestore Emulator at", emulatorHost);
 }
 
 console.log("PROJECT:", import.meta.env.VITE_FIREBASE_PROJECT_ID);

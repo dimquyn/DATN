@@ -38,7 +38,12 @@ export const db = initializeFirestore(
 
 /*
  * Xác định host để kết nối Firebase Emulator:
- * - Web (chạy trên PC): 127.0.0.1 hoạt động bình thường.
+ * - Web mở trên chính máy chạy Emulator: window.location.hostname là
+ *   "localhost" -> đúng luôn.
+ * - Web mở từ điện thoại/máy khác qua IP LAN (vd http://192.168.x.x:8081):
+ *   window.location.hostname chính là IP LAN đó — dùng lại luôn thay vì
+ *   hard-code 127.0.0.1 (127.0.0.1 lúc này sẽ trỏ về chính điện thoại,
+ *   nơi không có Emulator nào chạy cả).
  * - Native (Expo Go trên thiết bị thật/máy ảo): 127.0.0.1 trỏ về chính
  *   thiết bị đó, không phải PC đang chạy Emulator, nên cần lấy đúng IP LAN
  *   của PC. Constants.expoConfig?.hostUri chứa địa chỉ Metro Bundler mà
@@ -47,7 +52,7 @@ export const db = initializeFirestore(
  */
 function getEmulatorHost(): string {
   if (Platform.OS === "web") {
-    return "127.0.0.1";
+    return typeof window !== "undefined" ? window.location.hostname : "127.0.0.1";
   }
 
   const hostUri = Constants.expoConfig?.hostUri;
