@@ -150,7 +150,7 @@ export default function TicketDetailScreen() {
   const handleAction = async () => {
     if (!user || !ticket || updating) return;
 
-    const action = getNextTicketAction(ticket.status);
+    const action = getNextTicketAction(ticket.status, !!ticket.lastAIError);
     if (!action) return;
 
     setUpdating(true);
@@ -240,10 +240,18 @@ export default function TicketDetailScreen() {
     return <FullScreenLoading message="Đang tải chi tiết khiếu nại..." />;
   }
 
+  // Ticket kẹt ở "pending" mãi mãi nếu AI phân tích lỗi (lastAIError) — coi
+  // trường hợp này tương đương "ai_analyzed" để nhân viên vẫn nhận xử lý và
+  // tự soạn phản hồi thủ công được, chỉ là không có gợi ý/phân tích từ AI.
+  // Dùng !aiResultId (không phải status === "pending") vì sau khi nhận xử
+  // lý, status đổi sang "in_progress"/"responded" nhưng vẫn cần nhớ là
+  // ticket này chưa từng có kết quả AI để hiển thị đúng UI "tự soạn".
+  const aiFailed = !ticket?.aiResultId && !!ticket?.lastAIError;
   const isEditablePhase =
-    ticket?.status === "ai_analyzed" || ticket?.status === "in_progress";
+    ticket?.status === "ai_analyzed" || ticket?.status === "in_progress" || aiFailed;
   const isRespondedPhase = ticket?.status === "responded" || ticket?.status === "closed";
-  const showReplyToggle = !!ticket && ((isEditablePhase && !!aiResult) || isRespondedPhase);
+  const showReplyToggle =
+    !!ticket && ((isEditablePhase && (!!aiResult || aiFailed)) || isRespondedPhase);
 
   return (
     <View style={styles.screen}>
@@ -403,6 +411,10 @@ export default function TicketDetailScreen() {
                       ? showReplySection
                         ? "Ẩn nội dung đã phản hồi"
                         : "Xem nội dung đã phản hồi"
+                      : aiFailed
+                      ? showReplySection
+                        ? "Ẩn soạn phản hồi"
+                        : "Soạn phản hồi"
                       : showReplySection
                       ? "Ẩn phản hồi đề xuất"
                       : "Xem phản hồi đề xuất"}
@@ -425,7 +437,9 @@ export default function TicketDetailScreen() {
                     ) : (
                       <>
                         <Text style={styles.replyLabel}>
-                          PHẢN HỒI ĐỀ XUẤT (CÓ THỂ CHỈNH SỬA)
+                          {aiFailed
+                            ? "NỘI DUNG PHẢN HỒI (TỰ SOẠN — AI KHÔNG PHÂN TÍCH ĐƯỢC)"
+                            : "PHẢN HỒI ĐỀ XUẤT (CÓ THỂ CHỈNH SỬA)"}
                         </Text>
                         <TextInput
                           ref={replyInputRef}
@@ -495,13 +509,13 @@ export default function TicketDetailScreen() {
 
             {/* Hành động Nhận xử lý / Đóng khiếu nại (Sprint 4) */}
             {(() => {
-              const action = getNextTicketAction(ticket.status);
+              const action = getNextTicketAction(ticket.status, aiFailed);
 
               if (!action) {
                 return null;
               }
 
-              const isClaimAction = ticket.status === "ai_analyzed";
+              const isClaimAction = action.nextStatus === "in_progress";
               const isTakenByOther =
                 isClaimAction && !!ticket.assignedTo && ticket.assignedTo !== user.uid;
 

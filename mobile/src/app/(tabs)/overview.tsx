@@ -57,6 +57,7 @@ export default function OverviewScreen() {
     let ratingSum = 0;
     let ratingCount = 0;
     let ratingHighCount = 0; // đánh giá 4-5 sao
+    const ratingStarCounts: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
 
     for (const ticket of tickets) {
       if (NEW_STATUSES.has(ticket.status)) newCount += 1;
@@ -73,6 +74,7 @@ export default function OverviewScreen() {
         ratingSum += ticket.rating;
         ratingCount += 1;
         if (ticket.rating >= 4) ratingHighCount += 1;
+        ratingStarCounts[ticket.rating] += 1;
       }
     }
 
@@ -88,6 +90,7 @@ export default function OverviewScreen() {
       averageRating,
       ratingCount,
       highRatingPercent,
+      ratingStarCounts,
     };
   }, [tickets]);
 
@@ -170,19 +173,46 @@ export default function OverviewScreen() {
       <Text style={[styles.sectionTitle, styles.satisfactionTitle]}>Đánh giá khách hàng</Text>
 
       {stats.ratingCount > 0 ? (
-        <View style={styles.satisfactionCard}>
-          <View style={styles.satisfactionRow}>
-            <Text style={styles.satisfactionScore}>{stats.averageRating.toFixed(1)}/5</Text>
-            <Text style={styles.satisfactionStars}>
-              {"★".repeat(Math.round(stats.averageRating))}
-              {"☆".repeat(5 - Math.round(stats.averageRating))}
+        <>
+          <Pressable
+            style={styles.satisfactionCard}
+            onPress={() => router.push({ pathname: "/ratings" })}
+          >
+            <View style={styles.satisfactionRow}>
+              <Text style={styles.satisfactionScore}>{stats.averageRating.toFixed(1)}/5</Text>
+              <Text style={styles.satisfactionStars}>
+                {"★".repeat(Math.round(stats.averageRating))}
+                {"☆".repeat(5 - Math.round(stats.averageRating))}
+              </Text>
+            </View>
+            <Text style={styles.satisfactionMeta}>
+              {stats.ratingCount} lượt đánh giá · Xem danh sách →
             </Text>
+            <Text style={styles.satisfactionMeta}>
+              {stats.highRatingPercent}% đánh giá 4–5 sao
+            </Text>
+          </Pressable>
+
+          <View style={styles.priorityList}>
+            {[5, 4, 3, 2, 1].map((star) => (
+              <Pressable
+                key={star}
+                style={styles.priorityRow}
+                onPress={() =>
+                  router.push({ pathname: "/ratings", params: { star: String(star) } })
+                }
+              >
+                <View style={styles.priorityRowLeft}>
+                  <Text style={styles.starRowLabel}>
+                    {"★".repeat(star)}
+                    {"☆".repeat(5 - star)}
+                  </Text>
+                </View>
+                <Text style={styles.priorityValue}>{stats.ratingStarCounts[star]}</Text>
+              </Pressable>
+            ))}
           </View>
-          <Text style={styles.satisfactionMeta}>{stats.ratingCount} lượt đánh giá</Text>
-          <Text style={styles.satisfactionMeta}>
-            {stats.highRatingPercent}% đánh giá 4–5 sao
-          </Text>
-        </View>
+        </>
       ) : (
         <View style={styles.satisfactionCard}>
           <Text style={styles.satisfactionMeta}>Chưa có đánh giá nào từ khách hàng.</Text>
@@ -240,4 +270,5 @@ const styles = StyleSheet.create({
   satisfactionScore: { fontSize: 22, fontWeight: "800", color: "#111827" },
   satisfactionStars: { fontSize: 16, color: "#F59E0B", letterSpacing: 1 },
   satisfactionMeta: { marginTop: 6, fontSize: 12, color: "#6B7280" },
+  starRowLabel: { fontSize: 14, color: "#F59E0B", letterSpacing: 1 },
 });

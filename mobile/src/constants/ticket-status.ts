@@ -25,8 +25,19 @@ export interface TicketStatusAction {
  * Bước in_progress -> responded KHÔNG nằm ở đây vì nó gắn liền với việc
  * xác nhận nội dung phản hồi (finalReply), được xử lý riêng trong
  * Ticket Detail cùng với ô nhập phản hồi.
+ *
+ * `aiFailed` = true khi ticket đang "pending" nhưng AI đã phân tích lỗi
+ * (có lastAIError) — ticket này sẽ kẹt ở "pending" mãi mãi nếu không cho
+ * nhân viên tự nhận xử lý thủ công, nên coi như tương đương "ai_analyzed".
  */
-export function getNextTicketAction(status: TicketStatus): TicketStatusAction | null {
+export function getNextTicketAction(
+  status: TicketStatus,
+  aiFailed?: boolean
+): TicketStatusAction | null {
+  if (status === "pending" && aiFailed) {
+    return { nextStatus: "in_progress", label: "Nhận xử lý" };
+  }
+
   switch (status) {
     case "ai_analyzed":
       return { nextStatus: "in_progress", label: "Nhận xử lý" };

@@ -45,13 +45,16 @@ service cloud.firestore {
         && after.updatedAt == request.time
         && (
           // "Nhận xử lý": ai_analyzed -> in_progress, tự gán cho chính mình.
+          // Cũng cho phép từ "pending" nếu AI đã thất bại (có lastAIError) —
+          // ticket bị AI phân tích lỗi mãi mãi kẹt ở "pending" nên nhân viên
+          // cần tự nhận xử lý thủ công thay vì chờ AI không bao giờ xong.
           // Bắt buộc assignedTo cũ phải null: vừa validate dữ liệu vừa chặn
           // race condition khi 2 nhân viên cùng bấm "Nhận xử lý" 1 lúc — ai
           // commit trước sẽ khiến request của người còn lại bị từ chối vì
           // lúc đó resource.data.assignedTo không còn null nữa.
           (
             changedKeys.hasOnly(['status', 'assignedTo', 'updatedAt'])
-            && before.status == 'ai_analyzed'
+            && (before.status == 'ai_analyzed' || (before.status == 'pending' && 'lastAIError' in before))
             && before.assignedTo == null
             && after.status == 'in_progress'
             && after.assignedTo == request.auth.uid
