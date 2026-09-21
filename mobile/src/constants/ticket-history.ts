@@ -1,0 +1,33 @@
+import type { TicketHistoryAction } from "../types/ticket-history";
+
+export const TICKET_HISTORY_LABELS: Record<TicketHistoryAction, string> = {
+  created: "Ticket được tạo",
+  ai_analyzed: "AI phân tích hoàn tất",
+  claimed: "Nhân viên tiếp nhận",
+  responded: "Đã gửi phản hồi khách hàng",
+  closed: "Ticket đóng",
+  rated: "Khách hàng đánh giá",
+};
+
+export function getTicketHistoryLabel(action: string): string {
+  if (action in TICKET_HISTORY_LABELS) {
+    return TICKET_HISTORY_LABELS[action as TicketHistoryAction];
+  }
+  return action;
+}
+
+export const TICKET_HISTORY_DOT_COLORS: Record<TicketHistoryAction, string> = {
+  created: "#9CA3AF",
+  ai_analyzed: "#3B82F6",
+  claimed: "#F97316",
+  responded: "#F97316",
+  closed: "#10B981",
+  rated: "#EAB308",
+};
+
+export function getTicketHistoryDotColor(action: string): string {
+  if (action in TICKET_HISTORY_DOT_COLORS) {
+    return TICKET_HISTORY_DOT_COLORS[action as TicketHistoryAction];
+  }
+  return "#9CA3AF";
+}

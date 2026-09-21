@@ -1,7 +1,10 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { Ticket } from "../../types/ticket";
 import { getTicketStatusLabel } from "../../constants/ticket-status";
+import { AI_PRIORITY_LABELS, AI_PRIORITY_STYLES } from "../../constants/ai-priority";
 import { formatRelativeTicketTime } from "../../utils/format-ticket-date";
+import { getDisplayTicketCode } from "../../utils/ticket-code";
+import { isTicketOverdue } from "../../utils/ticket-sla";
 
 interface TicketCardProps {
   ticket: Ticket;
@@ -9,10 +12,12 @@ interface TicketCardProps {
 }
 
 export function TicketCard({ ticket, onPress }: TicketCardProps) {
+  const displayCode = getDisplayTicketCode(ticket);
   const displayName = ticket.customerName?.trim() || "Khách hàng";
-  const displayContent = ticket.content?.trim() || "Không có nội dung";
   const displayTime = formatRelativeTicketTime(ticket.createdAt);
   const statusLabel = getTicketStatusLabel(ticket.status);
+  const priorityStyle = ticket.priority ? AI_PRIORITY_STYLES[ticket.priority] : null;
+  const overdue = isTicketOverdue(ticket);
 
   return (
     <Pressable
@@ -24,9 +29,30 @@ export function TicketCard({ ticket, onPress }: TicketCardProps) {
       </View>
 
       <View style={styles.body}>
-        <Text style={styles.title} numberOfLines={1}>
-          {displayContent}
-        </Text>
+        <View style={styles.titleRow}>
+          <Text style={styles.title} numberOfLines={1}>
+            {displayCode}
+          </Text>
+
+          {priorityStyle && ticket.priority && (
+            <View
+              style={[
+                styles.priorityBadge,
+                { backgroundColor: priorityStyle.bg, borderColor: priorityStyle.border },
+              ]}
+            >
+              <Text style={[styles.priorityBadgeText, { color: priorityStyle.text }]}>
+                {AI_PRIORITY_LABELS[ticket.priority]}
+              </Text>
+            </View>
+          )}
+
+          {overdue && (
+            <View style={styles.overdueBadge}>
+              <Text style={styles.overdueBadgeText}>⏰ Quá hạn</Text>
+            </View>
+          )}
+        </View>
         <Text style={styles.name} numberOfLines={1}>
           {displayName}
         </Text>
@@ -68,7 +94,30 @@ const styles = StyleSheet.create({
   },
   iconGlyph: { fontSize: 18 },
   body: { flex: 1 },
-  title: { fontSize: 15, fontWeight: "700", color: "#111827" },
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  title: { flex: 1, fontSize: 15, fontWeight: "700", color: "#111827" },
+  priorityBadge: {
+    marginLeft: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  priorityBadgeText: { fontSize: 10, fontWeight: "700" },
+  overdueBadge: {
+    marginLeft: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    borderWidth: 1,
+    backgroundColor: "#FEF2F2",
+    borderColor: "#EF4444",
+  },
+  overdueBadgeText: { fontSize: 10, fontWeight: "700", color: "#B91C1C" },
   name: { marginTop: 2, fontSize: 13, color: "#6B7280" },
   footerRow: {
     marginTop: 10,

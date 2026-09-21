@@ -1,4 +1,4 @@
-import { onRequest } from "firebase-functions/v2/https";
+import { onRequest, onCall, HttpsError } from "firebase-functions/v2/https";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { defineSecret } from "firebase-functions/params";
 import { logger } from "firebase-functions/v2";
@@ -217,7 +217,18 @@ export const analyzeTicketWithAI = onDocumentCreated(
       await ticketRef.update({
         status: "ai_analyzed",
         aiResultId: aiResultRef.id,
+        // Lưu kèm priority ngay trên ticket (denormalize) để mobile hiển thị
+        // badge độ ưu tiên ở danh sách ticket mà không cần đọc thêm ai_results.
+        priority: aiResult.priority,
         updatedAt: FieldValue.serverTimestamp(),
+      });
+
+      await ticketRef.collection("history").add({
+        ticketId,
+        ticketCode: ticketData?.code ?? null,
+        action: "ai_analyzed",
+        actorName: "Hệ thống AI",
+        createdAt: FieldValue.serverTimestamp(),
       });
 
       logger.info(`[analyzeTicketWithAI] Ticket ${ticketId} đã phân tích AI thành công -> aiResultId: ${aiResultRef.id}`);
@@ -231,5 +242,127 @@ export const analyzeTicketWithAI = onDocumentCreated(
         logger.error(`[analyzeTicketWithAI] Không thể ghi lastAIError cho ticket ${ticketId}:`, updateError);
       });
     }
+  }
+);
+
+/**
+ * ============================================================
+ * Cloud Function: trackTicket
+ * ============================================================
+ * Callable Function cho website (khách hàng KHÔNG đăng nhập) tra cứu
+ * trạng thái khiếu nại của mình bằng mã ticket + số điện thoại đã đăng ký.
+ * Dùng Admin SDK (bỏ qua Firestore rules) vì rules hiện tại chỉ cho phép
+ * nhân viên đã đăng nhập đọc collection "tickets".
+ * ============================================================
+ */
+export const trackTicket = onCall(
+  { region: "asia-southeast1" },
+  async (request) => {
+    const { code, phone } = (request.data ?? {}) as { code?: unknown; phone?: unknown };
+
+    if (typeof code !== "string" || !code.trim() || typeof phone !== "string" || !phone.trim()) {
+      throw new HttpsError("invalid-argument", "Thiếu mã khiếu nại hoặc số điện thoại.");
+    }
+
+    const normalizedCode = code.trim().toUpperCase();
+
+    const snapshot = await db
+      .collection("tickets")
+      .where("code", "==", normalizedCode)
+      .limit(1)
+      .get();
+
+    const doc = snapshot.docs[0];
+
+    // Không phân biệt "sai mã" hay "sai số điện thoại" trong thông báo lỗi —
+    // tránh lộ thông tin cho việc dò mã ticket của người khác.
+    if (!doc || doc.data().phone !== phone) {
+      throw new HttpsError("not-found", "Không tìm thấy khiếu nại phù hợp.");
+    }
+
+    const data = doc.data();
+
+    return {
+      ticket: {
+        code: data.code ?? normalizedCode,
+        status: data.status,
+        createdAt: data.createdAt?.toMillis?.() ?? null,
+        updatedAt: data.updatedAt?.toMillis?.() ?? null,
+        finalReply: data.finalReply ?? null,
+        rating: data.rating ?? null,
+        ratingComment: data.ratingComment ?? null,
+      },
+    };
+  }
+);
+
+/**
+ * ============================================================
+ * Cloud Function: submitTicketRating
+ * ============================================================
+ * Callable Function cho website — khách hàng gửi đánh giá 1-5 sao + nhận
+ * xét sau khi đã nhận phản hồi (tickets.finalReply != null). Chỉ chấp
+ * nhận đánh giá đầu tiên cho mỗi ticket (không cho sửa/ghi đè).
+ * ============================================================
+ */
+export const submitTicketRating = onCall(
+  { region: "asia-southeast1" },
+  async (request) => {
+    const { code, phone, rating, comment } = (request.data ?? {}) as {
+      code?: unknown;
+      phone?: unknown;
+      rating?: unknown;
+      comment?: unknown;
+    };
+
+    if (typeof code !== "string" || !code.trim() || typeof phone !== "string" || !phone.trim()) {
+      throw new HttpsError("invalid-argument", "Thiếu mã khiếu nại hoặc số điện thoại.");
+    }
+
+    if (typeof rating !== "number" || !Number.isInteger(rating) || rating < 1 || rating > 5) {
+      throw new HttpsError("invalid-argument", "Số sao đánh giá phải là số nguyên từ 1 đến 5.");
+    }
+
+    const normalizedComment = typeof comment === "string" ? comment.trim().slice(0, 500) : "";
+    const normalizedCode = code.trim().toUpperCase();
+
+    const snapshot = await db
+      .collection("tickets")
+      .where("code", "==", normalizedCode)
+      .limit(1)
+      .get();
+
+    const doc = snapshot.docs[0];
+
+    if (!doc || doc.data().phone !== phone) {
+      throw new HttpsError("not-found", "Không tìm thấy khiếu nại phù hợp.");
+    }
+
+    const data = doc.data();
+
+    if (!data.finalReply) {
+      throw new HttpsError("failed-precondition", "Khiếu nại chưa được phản hồi, chưa thể đánh giá.");
+    }
+
+    if (data.rating != null) {
+      throw new HttpsError("already-exists", "Khiếu nại này đã được đánh giá trước đó.");
+    }
+
+    await doc.ref.update({
+      rating,
+      ratingComment: normalizedComment || null,
+      ratedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    await doc.ref.collection("history").add({
+      ticketId: doc.id,
+      ticketCode: data.code ?? normalizedCode,
+      action: "rated",
+      actorName: data.customerName ?? "Khách hàng",
+      createdAt: FieldValue.serverTimestamp(),
+    });
+
+    return { success: true };
   }
 );

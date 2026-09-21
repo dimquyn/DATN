@@ -71,7 +71,7 @@ export default function LoginScreen() {
   }
 
   if (user) {
-    return <Redirect href="/dashboard" />;
+    return <Redirect href="/overview" />;
   }
 
   const handleEmailChange = (value: string): void => {

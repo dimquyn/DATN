@@ -4,6 +4,7 @@ import {
   getFirestore,
   connectFirestoreEmulator,
 } from "firebase/firestore";
+import { getFunctions, connectFunctionsEmulator } from "firebase/functions";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -18,10 +19,15 @@ const app = initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+// Cùng region với các Cloud Function trong functions/src/index.ts
+// (analyzeTicketWithAI, trackTicket, submitTicketRating) — phải khớp,
+// nếu không client sẽ gọi nhầm region mặc định (us-central1) và luôn 404.
+export const functions = getFunctions(app, "asia-southeast1");
 
-// muốn quay lại Firestore thật thì cmt 3 dòng dưới đây 
+// muốn quay lại Firestore thật thì cmt 3 dòng dưới đây
 if (import.meta.env.DEV) {
   connectFirestoreEmulator(db, "127.0.0.1", 8080);
+  connectFunctionsEmulator(functions, "127.0.0.1", 5001);
   console.log("🔥 Connected to Firestore Emulator");
 }
 

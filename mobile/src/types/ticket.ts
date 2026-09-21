@@ -11,6 +11,7 @@ export type TicketStatus =
 
 export interface Ticket {
   id: string;
+  code: string | null;
   customerName: string;
   phone: string;
   email: string;
@@ -19,7 +20,11 @@ export interface Ticket {
   status: TicketStatus;
   assignedTo: string | null;
   aiResultId: string | null;
+  priority: "High Priority" | "Medium" | "Low" | null;
   finalReply: string | null;
+  rating: number | null;
+  ratingComment: string | null;
+  ratedAt: Timestamp | null;
   createdAt: Timestamp | null;
   updatedAt: Timestamp | null;
   lastAIError?: string;

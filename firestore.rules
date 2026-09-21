@@ -2,8 +2,87 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if true;
+
+    // Nhân viên CSKH đăng nhập qua mobile app (Firebase Auth). Không phân
+    // quyền theo vai trò — mọi tài khoản đã đăng nhập đều được xem là nhân
+    // viên hợp lệ (đủ cho phạm vi đồ án hiện tại).
+    function isStaff() {
+      return request.auth != null;
+    }
+
+    // Khách gửi khiếu nại từ website (KHÔNG đăng nhập) chỉ được tạo ticket
+    // mới đúng ở trạng thái ban đầu, với đúng bộ field mà form gửi lên —
+    // không được tự gán người xử lý, kết quả AI, hay chèn thêm field lạ.
+    function isValidNewTicket() {
+      let data = request.resource.data;
+      return data.keys().hasOnly([
+          'code', 'customerName', 'phone', 'email', 'content',
+          'channel', 'status', 'assignedTo', 'aiResultId', 'createdAt', 'updatedAt'
+        ])
+        && data.status == 'pending'
+        && data.assignedTo == null
+        && data.aiResultId == null
+        && data.customerName is string && data.customerName.size() > 0 && data.customerName.size() <= 200
+        && data.phone is string && data.phone.size() <= 20
+        && data.email is string && data.email.size() <= 200
+        && data.content is string && data.content.size() > 0 && data.content.size() <= 5000
+        && data.channel in ['Website', 'Facebook', 'Zalo']
+        && data.createdAt == request.time
+        && data.updatedAt == request.time;
+    }
+
+    // Nhân viên chỉ được đổi trạng thái/người xử lý/phản hồi cuối cùng —
+    // không được sửa nội dung gốc của khách hàng hay giả mạo kết quả AI
+    // (aiResultId, priority, lastAIError chỉ do Cloud Functions ghi qua
+    // Admin SDK, vốn không đi qua rules này).
+    function isValidStaffTicketUpdate() {
+      return isStaff()
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['status', 'assignedTo', 'finalReply', 'updatedAt'])
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    match /tickets/{ticketId} {
+      allow read: if isStaff();
+      allow create: if isValidNewTicket();
+      allow update: if isValidStaffTicketUpdate();
+      allow delete: if false;
+
+      match /history/{entryId} {
+        allow read: if isStaff();
+
+        // Khách gửi khiếu nại lần đầu (không đăng nhập) cần ghi được đúng
+        // 1 dòng lịch sử "created" kèm ticket vừa tạo; mọi bước tiếp theo
+        // (claimed/responded/closed/ai_analyzed) do nhân viên đã đăng nhập
+        // hoặc Cloud Functions (Admin SDK) ghi.
+        allow create: if isStaff()
+          || (
+            request.resource.data.keys().hasOnly(['ticketId', 'ticketCode', 'action', 'actorName', 'createdAt'])
+            && request.resource.data.ticketId == ticketId
+            && request.resource.data.action == 'created'
+            && request.resource.data.actorName is string
+            && request.resource.data.createdAt == request.time
+          );
+        allow update, delete: if false;
+      }
+    }
+
+    // Bộ đếm sinh mã ticket tuần tự (TK01, TK02, ...) — chỉ cho phép tăng
+    // đúng 1 đơn vị mỗi lần, không cho ghi giá trị tùy ý.
+    match /counters/tickets {
+      allow read: if false;
+      allow create: if request.resource.data.keys().hasOnly(['count']) && request.resource.data.count == 1;
+      allow update: if request.resource.data.keys().hasOnly(['count'])
+        && request.resource.data.count == resource.data.count + 1;
+      allow delete: if false;
+    }
+
+    // Kết quả phân tích AI chỉ do Cloud Function analyzeTicketWithAI (Admin
+    // SDK) ghi — Admin SDK bỏ qua rules nên "write: if false" không chặn nó,
+    // chỉ chặn client (website/mobile) tự ý ghi/sửa kết quả AI.
+    match /ai_results/{resultId} {
+      allow read: if isStaff();
+      allow write: if false;
     }
   }
 }

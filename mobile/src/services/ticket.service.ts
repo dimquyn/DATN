@@ -12,6 +12,7 @@ import {
   type Unsubscribe,
 } from "firebase/firestore";
 import { db } from "../firebase";
+import { addTicketHistoryEntry } from "./ticket-history.service";
 import type { Ticket, TicketStatus } from "../types/ticket";
 
 const TICKETS_COLLECTION = "tickets";
@@ -19,6 +20,7 @@ const TICKETS_COLLECTION = "tickets";
 function mapTicketData(id: string, data: DocumentData): Ticket {
   return {
     id,
+    code: data.code ?? null,
     customerName: data.customerName,
     phone: data.phone,
     email: data.email,
@@ -27,12 +29,25 @@ function mapTicketData(id: string, data: DocumentData): Ticket {
     status: data.status,
     assignedTo: data.assignedTo ?? null,
     aiResultId: data.aiResultId ?? null,
+    priority: data.priority ?? null,
     finalReply: data.finalReply ?? null,
+    rating: data.rating ?? null,
+    ratingComment: data.ratingComment ?? null,
+    ratedAt: data.ratedAt ?? null,
     createdAt: data.createdAt ?? null,
     updatedAt: data.updatedAt ?? null,
     lastAIError: data.lastAIError,
   };
 }
+
+// Ứng với mỗi trạng thái mà updateTicketStatus có thể chuyển tới, ghi 1 dòng
+// lịch sử tương ứng — status không có trong map này (vd "pending", "ai_analyzed")
+// không đi qua hàm này nên không cần khai báo.
+const STATUS_TO_HISTORY_ACTION: Partial<Record<TicketStatus, string>> = {
+  in_progress: "claimed",
+  responded: "responded",
+  closed: "closed",
+};
 
 export function subscribeToTickets(
   onData: (tickets: Ticket[]) => void,
@@ -76,6 +91,14 @@ export interface UpdateTicketStatusOptions {
    * KHÔNG liên quan và KHÔNG ghi đè ai_results.reply.
    */
   finalReply?: string;
+  /**
+   * Thông tin để ghi 1 dòng lịch sử xử lý (màn "Lịch sử xử lý") ứng với
+   * bước chuyển trạng thái này. Không truyền thì không ghi lịch sử.
+   */
+  history?: {
+    actorName: string;
+    ticketCode?: string | null;
+  };
 }
 
 /**
@@ -106,4 +129,13 @@ export async function updateTicketStatus(
   }
 
   await updateDoc(ticketRef, updates);
+
+  const historyAction = STATUS_TO_HISTORY_ACTION[status];
+  if (options?.history && historyAction) {
+    await addTicketHistoryEntry(ticketId, {
+      action: historyAction,
+      actorName: options.history.actorName,
+      ticketCode: options.history.ticketCode,
+    });
+  }
 }

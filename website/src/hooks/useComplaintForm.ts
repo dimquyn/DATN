@@ -1,10 +1,38 @@
 import { useState } from "react";
 import type { ChangeEvent, FocusEvent, FormEvent } from "react";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, doc, runTransaction, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
 import { TICKET_CHANNELS } from "../types/ticket";
-import type { Ticket } from "../types/ticket";
 import { validateName, validatePhone, validateEmail, validateContent } from "../utils/validation";
+
+// Đếm số ticket đã tạo để sinh mã tuần tự (TK01, TK02, ...). Dùng transaction
+// để tăng bộ đếm và tạo ticket cùng lúc, tránh 2 khách gửi đồng thời bị trùng mã.
+const TICKETS_COUNTER_REF = doc(db, "counters", "tickets");
+
+async function createTicketWithCode(
+  ticketData: Record<string, unknown>
+): Promise<string> {
+  const ticketRef = doc(collection(db, "tickets"));
+  const historyRef = doc(collection(ticketRef, "history"));
+
+  return runTransaction(db, async (transaction) => {
+    const counterSnap = await transaction.get(TICKETS_COUNTER_REF);
+    const nextNumber = (counterSnap.exists() ? (counterSnap.data().count as number) : 0) + 1;
+    const code = `TK${String(nextNumber).padStart(2, "0")}`;
+
+    transaction.set(TICKETS_COUNTER_REF, { count: nextNumber }, { merge: true });
+    transaction.set(ticketRef, { ...ticketData, code });
+    transaction.set(historyRef, {
+      ticketId: ticketRef.id,
+      ticketCode: code,
+      action: "created",
+      actorName: "Hệ thống",
+      createdAt: serverTimestamp(),
+    });
+
+    return code;
+  });
+}
 
 const EMPTY_FORM = {
   customerName: "",
@@ -42,6 +70,7 @@ export function useComplaintForm() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submittedCode, setSubmittedCode] = useState<string | null>(null);
 
   const handleChange = (
     e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
@@ -101,8 +130,9 @@ export function useComplaintForm() {
          updatedAt: serverTimestamp(),
       };
 
-      await addDoc(collection(db, "tickets"), newTicket);
+      const code = await createTicketWithCode(newTicket);
 
+      setSubmittedCode(code);
       setSubmitted(true);
       setForm(EMPTY_FORM);
       setErrors({});
@@ -117,6 +147,7 @@ export function useComplaintForm() {
 
   const resetForm = () => {
     setSubmitted(false);
+    setSubmittedCode(null);
   };
 
   return {
@@ -126,6 +157,7 @@ export function useComplaintForm() {
     submitting,
     submitted,
     submitError,
+    submittedCode,
     channelOptions: TICKET_CHANNELS,
     handleChange,
     handleBlur,

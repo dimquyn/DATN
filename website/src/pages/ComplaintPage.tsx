@@ -1,8 +1,10 @@
+import { useNavigate } from "react-router-dom";
 import { useComplaintForm } from "../hooks/useComplaintForm";
 import FormField, { getInputStateClass } from "../components/FormField";
 import { NAME_MAX_LENGTH, PHONE_LENGTH, EMAIL_MAX_LENGTH, CONTENT_MAX_LENGTH } from "../utils/validation";
 
 export default function ComplaintPage() {
+  const navigate = useNavigate();
   const {
     form,
     errors,
@@ -10,6 +12,7 @@ export default function ComplaintPage() {
     submitting,
     submitted,
     submitError,
+    submittedCode,
     channelOptions,
     handleChange,
     handleBlur,
@@ -20,9 +23,8 @@ export default function ComplaintPage() {
   const remainingChars = CONTENT_MAX_LENGTH - form.content.length;
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 flex items-center justify-center px-4 py-8 sm:px-6 sm:py-10 lg:py-12">
-      <div className="w-full max-w-sm sm:max-w-md lg:max-w-lg bg-white rounded-xl sm:rounded-2xl shadow-lg sm:shadow-xl shadow-gray-200/60 border border-gray-100 overflow-hidden transition-all duration-300">
-        {!submitted ? (
+    <div className="bg-white rounded-xl sm:rounded-2xl shadow-lg sm:shadow-xl shadow-gray-200/60 border border-gray-100 overflow-hidden transition-all duration-300">
+      {!submitted ? (
           <>
             <div className="px-5 py-4 sm:px-7 sm:py-5 border-b border-gray-100">
               <h1 className="text-gray-400 text-xs sm:text-sm font-medium tracking-wide">Web</h1>
@@ -139,18 +141,32 @@ export default function ComplaintPage() {
             <h2 className="text-violet-600 text-xl sm:text-2xl font-bold mb-2 sm:mb-3">
               Gửi thành công!
             </h2>
+            {submittedCode && (
+              <p className="text-gray-700 text-sm mb-3">
+                Mã yêu cầu của bạn: <span className="font-bold text-violet-600">{submittedCode}</span>
+              </p>
+            )}
             <p className="text-gray-500 text-sm mb-6 sm:mb-8 leading-relaxed">
               Chúng tôi sẽ liên hệ với bạn sớm nhất có thể!
             </p>
-            <button
-              onClick={resetForm}
-              className="bg-violet-600 hover:bg-violet-700 active:scale-[0.98] text-white text-sm sm:text-base font-semibold px-6 py-3 rounded-lg shadow-md shadow-violet-600/20 transition-all duration-150"
-            >
-              Quay về trang chủ
-            </button>
+            <div className="flex gap-3">
+              <button
+                onClick={resetForm}
+                className="bg-gray-100 hover:bg-gray-200 active:scale-[0.98] text-gray-700 text-sm sm:text-base font-semibold px-6 py-3 rounded-lg transition-all duration-150"
+              >
+                Gửi khiếu nại khác
+              </button>
+              {submittedCode && (
+                <button
+                  onClick={() => navigate(`/theo-doi?code=${submittedCode}`)}
+                  className="bg-violet-600 hover:bg-violet-700 active:scale-[0.98] text-white text-sm sm:text-base font-semibold px-6 py-3 rounded-lg shadow-md shadow-violet-600/20 transition-all duration-150"
+                >
+                  Theo dõi khiếu nại này
+                </button>
+              )}
+            </div>
           </div>
         )}
-      </div>
     </div>
   );
 }

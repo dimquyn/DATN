@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
@@ -10,30 +11,23 @@ import {
   View,
 } from "react-native";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../contexts/AuthContext";
 import { FullScreenLoading } from "../../components/common/FullScreenLoading";
 import { getTicketById, updateTicketStatus } from "../../services/ticket.service";
 import { getAIResultById } from "../../services/ai-result.service";
 import { getNextTicketAction, getTicketStatusLabel } from "../../constants/ticket-status";
 import { formatTicketDate } from "../../utils/format-ticket-date";
+import { getDisplayTicketCode } from "../../utils/ticket-code";
+import { AI_PRIORITY_LABELS, AI_PRIORITY_STYLES } from "../../constants/ai-priority";
 import type { Ticket } from "../../types/ticket";
-import type { AIPriority, AIResult } from "../../types/ai-result";
-
-// Chỉ để hiển thị — KHÔNG ghi ngược vào Firestore, Firestore không có field mã ticket.
-function getDisplayTicketCode(ticketId: string): string {
-  return `#TK-${ticketId.slice(-6).toUpperCase()}`;
-}
-
-const PRIORITY_STYLES: Record<AIPriority, { bg: string; border: string; text: string }> = {
-  "High Priority": { bg: "#FEF2F2", border: "#FCA5A5", text: "#B91C1C" },
-  Medium: { bg: "#FFFBEB", border: "#FDE68A", text: "#B45309" },
-  Low: { bg: "#ECFDF5", border: "#6EE7B7", text: "#047857" },
-};
+import type { AIResult } from "../../types/ai-result";
 
 export default function TicketDetailScreen() {
   const { user, initializing } = useAuth();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const insets = useSafeAreaInsets();
 
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [ticketLoading, setTicketLoading] = useState<boolean>(true);
@@ -53,6 +47,24 @@ export default function TicketDetailScreen() {
   const [replyDraftInitialized, setReplyDraftInitialized] = useState<boolean>(false);
   const [confirmingReply, setConfirmingReply] = useState<boolean>(false);
   const [confirmReplyError, setConfirmReplyError] = useState<string | null>(null);
+
+  // Cuộn ô "Phản hồi đề xuất" lên trên bàn phím khi được focus, giống app nhắn tin.
+  // Đo qua scrollContainerRef (View bọc ngoài) vì ScrollView không có sẵn measureInWindow.
+  const scrollViewRef = useRef<ScrollView>(null);
+  const scrollContainerRef = useRef<View>(null);
+  const replyInputRef = useRef<TextInput>(null);
+  const scrollOffsetRef = useRef<number>(0);
+
+  const handleReplyInputFocus = () => {
+    requestAnimationFrame(() => {
+      replyInputRef.current?.measureInWindow((_x, y) => {
+        scrollContainerRef.current?.measureInWindow((_sx, sy) => {
+          const targetOffset = scrollOffsetRef.current + (y - sy) - 24;
+          scrollViewRef.current?.scrollTo({ y: Math.max(targetOffset, 0), animated: false });
+        });
+      });
+    });
+  };
 
   useEffect(() => {
     if (!user || !id) return;
@@ -144,8 +156,10 @@ export default function TicketDetailScreen() {
     setUpdateError(null);
 
     try {
-      const options =
-        action.nextStatus === "in_progress" ? { assignedTo: user.uid } : undefined;
+      const options = {
+        ...(action.nextStatus === "in_progress" ? { assignedTo: user.uid } : {}),
+        history: { actorName: user.email ?? "Nhân viên", ticketCode: ticket.code },
+      };
 
       await updateTicketStatus(ticket.id, action.nextStatus, options);
 
@@ -181,7 +195,10 @@ export default function TicketDetailScreen() {
     setConfirmReplyError(null);
 
     try {
-      await updateTicketStatus(ticket.id, "responded", { finalReply: trimmed });
+      await updateTicketStatus(ticket.id, "responded", {
+        finalReply: trimmed,
+        history: { actorName: user.email ?? "Nhân viên", ticketCode: ticket.code },
+      });
 
       setTicket((prev) =>
         prev ? { ...prev, status: "responded", finalReply: trimmed } : prev
@@ -214,9 +231,9 @@ export default function TicketDetailScreen() {
 
   return (
     <View style={styles.screen}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 14 }]}>
         <Pressable
-  onPress={() => router.replace("/dashboard")}
+  onPress={() => router.back()}
   style={styles.backButton}
   hitSlop={8}
 >
@@ -231,14 +248,27 @@ export default function TicketDetailScreen() {
           <Text style={styles.errorText}>{ticketError ?? "Không tìm thấy khiếu nại."}</Text>
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+        <KeyboardAvoidingView
+          style={styles.keyboardAvoider}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        >
+        <View ref={scrollContainerRef} style={styles.keyboardAvoider}>
+        <ScrollView
+          ref={scrollViewRef}
+          contentContainerStyle={styles.scrollContent}
+          onScroll={(e) => {
+            scrollOffsetRef.current = e.nativeEvent.contentOffset.y;
+          }}
+          scrollEventThrottle={16}
+          keyboardShouldPersistTaps="handled"
+        >
           <View style={styles.contentWrapper}>
             {/* Mã yêu cầu */}
             <View style={styles.card}>
               <View style={styles.codeRow}>
                 <View>
                   <Text style={styles.labelText}>MÃ YÊU CẦU</Text>
-                  <Text style={styles.codeText}>{getDisplayTicketCode(ticket.id)}</Text>
+                  <Text style={styles.codeText}>{getDisplayTicketCode(ticket)}</Text>
                 </View>
 
                 {aiResult && (
@@ -246,22 +276,30 @@ export default function TicketDetailScreen() {
                     style={[
                       styles.priorityBadge,
                       {
-                        backgroundColor: PRIORITY_STYLES[aiResult.priority].bg,
-                        borderColor: PRIORITY_STYLES[aiResult.priority].border,
+                        backgroundColor: AI_PRIORITY_STYLES[aiResult.priority].bg,
+                        borderColor: AI_PRIORITY_STYLES[aiResult.priority].border,
                       },
                     ]}
                   >
                     <Text
                       style={[
                         styles.priorityBadgeText,
-                        { color: PRIORITY_STYLES[aiResult.priority].text },
+                        { color: AI_PRIORITY_STYLES[aiResult.priority].text },
                       ]}
                     >
-                      {aiResult.priority}
+                      {AI_PRIORITY_LABELS[aiResult.priority]}
                     </Text>
                   </View>
                 )}
               </View>
+
+              <Pressable
+                onPress={() => router.push(`/ticket/history/${ticket.id}`)}
+                style={styles.historyLink}
+                hitSlop={8}
+              >
+                <Text style={styles.historyLinkText}>Xem lịch sử xử lý →</Text>
+              </Pressable>
             </View>
 
             {/* Thông tin khách hàng */}
@@ -374,10 +412,12 @@ export default function TicketDetailScreen() {
                           PHẢN HỒI ĐỀ XUẤT (CÓ THỂ CHỈNH SỬA)
                         </Text>
                         <TextInput
+                          ref={replyInputRef}
                           style={styles.replyInput}
                           multiline
                           value={replyDraft}
                           onChangeText={setReplyDraft}
+                          onFocus={handleReplyInputFocus}
                           editable={!confirmingReply}
                         />
 
@@ -410,6 +450,29 @@ export default function TicketDetailScreen() {
                       </>
                     )}
                   </View>
+                )}
+              </View>
+            )}
+
+            {/* Đánh giá của khách hàng — chỉ có sau khi đã phản hồi (responded/closed) */}
+            {isRespondedPhase && (
+              <View style={styles.card}>
+                <Text style={styles.sectionTitle}>ĐÁNH GIÁ CỦA KHÁCH HÀNG</Text>
+
+                {ticket.rating ? (
+                  <>
+                    <Text style={styles.ratingStars}>
+                      {"★".repeat(ticket.rating)}
+                      {"☆".repeat(5 - ticket.rating)}
+                    </Text>
+                    {ticket.ratingComment ? (
+                      <Text style={styles.ratingComment}>“{ticket.ratingComment}”</Text>
+                    ) : null}
+                  </>
+                ) : (
+                  <Text style={styles.pendingText}>
+                    Khách hàng chưa đánh giá phản hồi này.
+                  </Text>
                 )}
               </View>
             )}
@@ -458,6 +521,8 @@ export default function TicketDetailScreen() {
             })()}
           </View>
         </ScrollView>
+        </View>
+        </KeyboardAvoidingView>
       )}
     </View>
   );
@@ -501,11 +566,12 @@ const MAX_CONTENT_WIDTH = 820;
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: "#F7F8FA" },
+  keyboardAvoider: { flex: 1 },
   header: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingBottom: 14,
     backgroundColor: "#FFFFFF",
     borderBottomWidth: 1,
     borderBottomColor: "#E5E7EB",
@@ -570,6 +636,15 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#111827",
   },
+  historyLink: {
+    marginTop: 12,
+    alignSelf: "flex-start",
+  },
+  historyLinkText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#1667B1",
+  },
   priorityBadge: {
     paddingHorizontal: 12,
     paddingVertical: 6,
@@ -626,6 +701,14 @@ const styles = StyleSheet.create({
   errorTextInline: { fontSize: 13, color: "#B91C1C" },
   errorText: { fontSize: 14, color: "#B91C1C", textAlign: "center" },
   pendingText: { fontSize: 13, color: "#6B7280", textAlign: "center" },
+  ratingStars: { fontSize: 20, color: "#F59E0B", letterSpacing: 2 },
+  ratingComment: {
+    marginTop: 8,
+    fontSize: 14,
+    lineHeight: 20,
+    color: "#374151",
+    fontStyle: "italic",
+  },
   fieldBlock: {
     marginBottom: 14,
   },
