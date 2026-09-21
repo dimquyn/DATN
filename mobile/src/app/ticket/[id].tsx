@@ -10,6 +10,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { FirebaseError } from "firebase/app";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../contexts/AuthContext";
@@ -174,7 +175,22 @@ export default function TicketDetailScreen() {
       );
     } catch (err) {
       console.error("Lỗi khi cập nhật trạng thái ticket:", err);
-      setUpdateError("Không thể cập nhật trạng thái. Vui lòng thử lại.");
+
+      // firestore.rules từ chối request nếu ticket đã bị nhân viên khác
+      // "Nhận xử lý" trước (assignedTo không còn null) — tải lại ticket để
+      // UI phản ánh đúng trạng thái mới nhất thay vì để nhân viên tưởng
+      // nhầm là mình vẫn có thể thao tác trên dữ liệu cũ.
+      if (
+        err instanceof FirebaseError &&
+        err.code === "permission-denied" &&
+        action.nextStatus === "in_progress"
+      ) {
+        setUpdateError("Ticket này vừa được nhân viên khác nhận xử lý.");
+        const latest = await getTicketById(ticket.id).catch(() => null);
+        if (latest) setTicket(latest);
+      } else {
+        setUpdateError("Không thể cập nhật trạng thái. Vui lòng thử lại.");
+      }
     } finally {
       setUpdating(false);
     }

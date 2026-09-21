@@ -31,15 +31,47 @@ service cloud.firestore {
         && data.updatedAt == request.time;
     }
 
-    // Nhân viên chỉ được đổi trạng thái/người xử lý/phản hồi cuối cùng —
+    // Nhân viên chỉ được đổi trạng thái/người xử lý/phản hồi cuối cùng theo
+    // đúng 1 trong 3 bước chuyển hợp lệ (khớp luồng ở Ticket Detail) —
     // không được sửa nội dung gốc của khách hàng hay giả mạo kết quả AI
     // (aiResultId, priority, lastAIError chỉ do Cloud Functions ghi qua
     // Admin SDK, vốn không đi qua rules này).
     function isValidStaffTicketUpdate() {
+      let before = resource.data;
+      let after = request.resource.data;
+      let changedKeys = after.diff(before).affectedKeys();
+
       return isStaff()
-        && request.resource.data.diff(resource.data).affectedKeys()
-             .hasOnly(['status', 'assignedTo', 'finalReply', 'updatedAt'])
-        && request.resource.data.updatedAt == request.time;
+        && after.updatedAt == request.time
+        && (
+          // "Nhận xử lý": ai_analyzed -> in_progress, tự gán cho chính mình.
+          // Bắt buộc assignedTo cũ phải null: vừa validate dữ liệu vừa chặn
+          // race condition khi 2 nhân viên cùng bấm "Nhận xử lý" 1 lúc — ai
+          // commit trước sẽ khiến request của người còn lại bị từ chối vì
+          // lúc đó resource.data.assignedTo không còn null nữa.
+          (
+            changedKeys.hasOnly(['status', 'assignedTo', 'updatedAt'])
+            && before.status == 'ai_analyzed'
+            && before.assignedTo == null
+            && after.status == 'in_progress'
+            && after.assignedTo == request.auth.uid
+          )
+          // "Xác nhận đã phản hồi": in_progress -> responded, kèm finalReply.
+          || (
+            changedKeys.hasOnly(['status', 'finalReply', 'updatedAt'])
+            && before.status == 'in_progress'
+            && after.status == 'responded'
+            && after.finalReply is string
+            && after.finalReply.size() > 0
+            && after.finalReply.size() <= 5000
+          )
+          // "Đóng khiếu nại": responded -> closed, không đổi field nào khác.
+          || (
+            changedKeys.hasOnly(['status', 'updatedAt'])
+            && before.status == 'responded'
+            && after.status == 'closed'
+          )
+        );
     }
 
     match /tickets/{ticketId} {

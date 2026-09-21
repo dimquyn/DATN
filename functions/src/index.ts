@@ -1,4 +1,4 @@
-import { onRequest, onCall, HttpsError } from "firebase-functions/v2/https";
+import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { defineSecret } from "firebase-functions/params";
 import { logger } from "firebase-functions/v2";
@@ -6,8 +6,6 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { initializeApp, getApps } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 
-// Khởi tạo Firebase Admin SDK — CẦN THIẾT cho analyzeTicketWithAI vì function này
-// đọc/ghi Firestore (tickets, ai_results). testGemini không cần dòng này vì chỉ gọi Gemini.
 if (getApps().length === 0) {
   initializeApp();
 }
@@ -15,45 +13,8 @@ if (getApps().length === 0) {
 const db = getFirestore();
 
 // Khai báo "tham số bí mật" — giá trị thật lấy từ Cloud Secret Manager khi deploy,
-// hoặc từ file .secret.local khi chạy Emulator. Dùng CHUNG cho cả 2 function.
+// hoặc từ file .secret.local khi chạy Emulator.
 const geminiApiKey = defineSecret("GEMINI_API_KEY");
-
-/**
- * HTTP Function kiểm thử kết nối tới Gemini API.
- * POST /testGemini
- * Body: { "text": "Xin chào" }
- * Trả về: { "reply": "..." }
- */
-export const testGemini = onRequest(
-  { secrets: [geminiApiKey], cors: true },
-  async (req, res) => {
-    if (req.method !== "POST") {
-      res.status(405).json({ error: "Chỉ hỗ trợ phương thức POST." });
-      return;
-    }
-
-    const { text } = req.body as { text?: string };
-
-    if (!text || typeof text !== "string" || text.trim().length === 0) {
-      res.status(400).json({ error: "Thiếu trường 'text' hoặc giá trị không hợp lệ." });
-      return;
-    }
-
-    try {
-      const ai = new GoogleGenAI({ apiKey: geminiApiKey.value() });
-
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: text,
-      });
-
-      res.status(200).json({ reply: response.text });
-    } catch (error) {
-      console.error("Lỗi khi gọi Gemini API:", error);
-      res.status(500).json({ error: "Không thể kết nối tới Gemini API." });
-    }
-  }
-);
 
 /**
  * ============================================================
