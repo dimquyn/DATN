@@ -1,0 +1,11 @@
+{
+  "name": "ai-eval",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "eval": "node run-eval.mjs"
+  },
+  "dependencies": {
+    "@google/genai": "^2.10.0"
+  }
+}

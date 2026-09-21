@@ -1,0 +1,182 @@
+[
+  {
+    "id": "TS01",
+    "customerName": "Nguyễn Văn A",
+    "channel": "Website",
+    "content": "Tôi dùng hết dung lượng data mà mạng vẫn bị trừ tiền, mong công ty kiểm tra lại gói cước 4G/5G của tôi.",
+    "expected_category": "Gói cước/Dữ liệu",
+    "expected_priority": "Medium",
+    "expected_sentiment": "Trung lập"
+  },
+  {
+    "id": "TS02",
+    "customerName": "Trần Thị B",
+    "channel": "Website",
+    "content": "SIM của tôi bị khóa 2 chiều dù tôi đã nạp tiền đầy đủ, tôi rất cần liên lạc gấp, xin xử lý ngay!!!",
+    "expected_category": "SIM",
+    "expected_priority": "High Priority",
+    "expected_sentiment": "Rất tiêu cực"
+  },
+  {
+    "id": "TS03",
+    "customerName": "Lê Văn C",
+    "channel": "Website",
+    "content": "Mạng nhà tôi cứ chập chờn suốt cả tuần nay, gọi điện toàn bị rớt sóng, quá bực mình.",
+    "expected_category": "Đường truyền",
+    "expected_priority": "High Priority",
+    "expected_sentiment": "Tiêu cực"
+  },
+  {
+    "id": "TS04",
+    "customerName": "Phạm Thị D",
+    "channel": "Website",
+    "content": "Tôi đã thanh toán hóa đơn tháng 8 nhưng hệ thống vẫn báo nợ cước, phiền anh chị kiểm tra lại giúp.",
+    "expected_category": "Thanh toán",
+    "expected_priority": "Medium",
+    "expected_sentiment": "Tiêu cực"
+  },
+  {
+    "id": "TS05",
+    "customerName": "Hoàng Văn E",
+    "channel": "Website",
+    "content": "Cho tôi hỏi cách đổi sang gói cước sinh viên được không ạ?",
+    "expected_category": "Gói cước/Dữ liệu",
+    "expected_priority": "Low",
+    "expected_sentiment": "Trung lập"
+  },
+  {
+    "id": "TS06",
+    "customerName": "Vũ Thị F",
+    "channel": "Website",
+    "content": "Nhân viên tư vấn rất nhiệt tình, tôi chỉ muốn phản hồi để khen ngợi dịch vụ.",
+    "expected_category": "Khác",
+    "expected_priority": "Low",
+    "expected_sentiment": "Tích cực"
+  },
+  {
+    "id": "TS07",
+    "customerName": "Đặng Văn G",
+    "channel": "Website",
+    "content": "SIM 4G của tôi không nhận được sóng khi đi công tác ở tỉnh, ảnh hưởng công việc rất nhiều.",
+    "expected_category": "SIM",
+    "expected_priority": "High Priority",
+    "expected_sentiment": "Tiêu cực"
+  },
+  {
+    "id": "TS08",
+    "customerName": "Bùi Thị H",
+    "channel": "Website",
+    "content": "Tốc độ internet cáp quang chậm hơn hẳn so với gói tôi đã đăng ký, mong được kiểm tra và khắc phục.",
+    "expected_category": "Đường truyền",
+    "expected_priority": "Medium",
+    "expected_sentiment": "Tiêu cực"
+  },
+  {
+    "id": "TS09",
+    "customerName": "Ngô Văn I",
+    "channel": "Website",
+    "content": "Tôi bị trừ tiền 2 lần cho cùng 1 hóa đơn, đề nghị hoàn lại tiền thừa.",
+    "expected_category": "Thanh toán",
+    "expected_priority": "High Priority",
+    "expected_sentiment": "Rất tiêu cực"
+  },
+  {
+    "id": "TS10",
+    "customerName": "Đỗ Thị K",
+    "channel": "Website",
+    "content": "Tôi muốn đăng ký thêm dịch vụ chuyển vùng quốc tế, thủ tục như thế nào ạ?",
+    "expected_category": "Khác",
+    "expected_priority": "Low",
+    "expected_sentiment": "Trung lập"
+  },
+  {
+    "id": "TS11",
+    "customerName": "Trịnh Văn L",
+    "channel": "Website",
+    "content": "Data 4G của tôi bị giảm tốc độ dù chưa dùng hết dung lượng trong gói, mong kiểm tra.",
+    "expected_category": "Gói cước/Dữ liệu",
+    "expected_priority": "Medium",
+    "expected_sentiment": "Tiêu cực"
+  },
+  {
+    "id": "TS12",
+    "customerName": "Lý Thị M",
+    "channel": "Website",
+    "content": "SIM của con tôi bị mất, tôi cần khóa SIM gấp để tránh bị lợi dụng.",
+    "expected_category": "SIM",
+    "expected_priority": "High Priority",
+    "expected_sentiment": "Tiêu cực"
+  },
+  {
+    "id": "TS13",
+    "customerName": "Phan Văn N",
+    "channel": "Website",
+    "content": "Wifi nhà tôi bị mất kết nối liên tục vào buổi tối, đã báo kỹ thuật 3 lần vẫn chưa sửa được.",
+    "expected_category": "Đường truyền",
+    "expected_priority": "High Priority",
+    "expected_sentiment": "Rất tiêu cực"
+  },
+  {
+    "id": "TS14",
+    "customerName": "Dương Thị O",
+    "channel": "Website",
+    "content": "Tôi muốn hỏi hạn thanh toán cước tháng này là ngày nào.",
+    "expected_category": "Thanh toán",
+    "expected_priority": "Low",
+    "expected_sentiment": "Trung lập"
+  },
+  {
+    "id": "TS15",
+    "customerName": "Mai Văn P",
+    "channel": "Website",
+    "content": "Ứng dụng chăm sóc khách hàng bị lỗi không đăng nhập được.",
+    "expected_category": "Khác",
+    "expected_priority": "Medium",
+    "expected_sentiment": "Tiêu cực"
+  },
+  {
+    "id": "TS16",
+    "customerName": "Đinh Thị Q",
+    "channel": "Website",
+    "content": "Gói cước tôi đang dùng tính phí cao hơn thông báo ban đầu, mong giải thích rõ.",
+    "expected_category": "Gói cước/Dữ liệu",
+    "expected_priority": "Medium",
+    "expected_sentiment": "Tiêu cực"
+  },
+  {
+    "id": "TS17",
+    "customerName": "Hồ Văn R",
+    "channel": "Website",
+    "content": "Tôi rất hài lòng với tốc độ xử lý yêu cầu đổi SIM tuần trước, cảm ơn đội ngũ hỗ trợ.",
+    "expected_category": "SIM",
+    "expected_priority": "Low",
+    "expected_sentiment": "Tích cực"
+  },
+  {
+    "id": "TS18",
+    "customerName": "Công ty TNHH S",
+    "channel": "Website",
+    "content": "Đường truyền internet công ty tôi bị đứt hoàn toàn từ sáng nay, ảnh hưởng nghiêm trọng đến công việc kinh doanh, cần khắc phục khẩn cấp.",
+    "expected_category": "Đường truyền",
+    "expected_priority": "High Priority",
+    "expected_sentiment": "Rất tiêu cực"
+  },
+  {
+    "id": "TS19",
+    "customerName": "Tô Thị T",
+    "channel": "Website",
+    "content": "Tôi thanh toán online nhưng chưa nhận được hóa đơn điện tử qua email.",
+    "expected_category": "Thanh toán",
+    "expected_priority": "Low",
+    "expected_sentiment": "Trung lập"
+  },
+  {
+    "id": "TS20",
+    "customerName": "Lâm Văn U",
+    "channel": "Website",
+    "content": "Nhân viên gọi điện làm phiền tôi quá nhiều lần để mời gói cước dù tôi đã từ chối.",
+    "expected_category": "Khác",
+    "expected_priority": "Medium",
+    "expected_sentiment": "Tiêu cực"
+  }
+]
