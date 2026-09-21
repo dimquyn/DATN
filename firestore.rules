@@ -100,9 +100,13 @@ service cloud.firestore {
     }
 
     // Bộ đếm sinh mã ticket tuần tự (TK01, TK02, ...) — chỉ cho phép tăng
-    // đúng 1 đơn vị mỗi lần, không cho ghi giá trị tùy ý.
+    // đúng 1 đơn vị mỗi lần, không cho ghi giá trị tùy ý. Cho "get" vì
+    // transaction tạo ticket (useComplaintForm.ts) phải đọc được giá trị
+    // hiện tại trước khi tăng — giá trị này không có gì nhạy cảm (chỉ là
+    // số thứ tự); chặn "list" vì không có lý do gì để liệt kê collection này.
     match /counters/tickets {
-      allow read: if false;
+      allow get: if true;
+      allow list: if false;
       allow create: if request.resource.data.keys().hasOnly(['count']) && request.resource.data.count == 1;
       allow update: if request.resource.data.keys().hasOnly(['count'])
         && request.resource.data.count == resource.data.count + 1;

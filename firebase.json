@@ -24,13 +24,13 @@
   ],
   "hosting": [
     {
-      "target": "website",
+      "site": "telecom-ai-support",
       "public": "website/dist",
       "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
       "rewrites": [{ "source": "**", "destination": "/index.html" }]
     },
     {
-      "target": "staff-app",
+      "site": "datn-staff-app",
       "public": "mobile/dist",
       "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
       "rewrites": [{ "source": "**", "destination": "/index.html" }]
