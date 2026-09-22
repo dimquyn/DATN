@@ -1,0 +1,352 @@
+[
+  {
+    "id": "TS01",
+    "content": "Tôi dùng hết dung lượng data mà mạng vẫn bị trừ tiền, mong công ty kiểm tra lại gói cước 4G/5G của tôi.",
+    "expected": {
+      "category": "Gói cước/Dữ liệu",
+      "priority": "Medium",
+      "sentiment": "Trung lập"
+    },
+    "actual": {
+      "category": "Gói cước/Dữ liệu",
+      "priority": "Medium",
+      "sentiment": "Tiêu cực"
+    },
+    "match": {
+      "category": true,
+      "priority": true,
+      "sentiment": false
+    },
+    "latencyMs": 6966,
+    "reply": "Kính chào Quý khách Nguyễn Văn A,Chúng tôi đã nhận được phản hồi của Quý khách về việc phát sinh cước phí sau khi hết dung lượng data gói 4G/5G. Chúng tôi rất tiếc về sự bất tiện này.Bộ phận chuyên trách sẽ kiểm tra lại toàn bộ thông tin gói cước và lịch sử sử dụng của Quý khách một cách chi tiết nhất. Chúng tôi sẽ liên hệ lại trong thời gian sớm nhất để thông báo kết quả và đưa ra phương án xử lý phù hợp.Cảm ơn Quý khách đã tin tưởng và sử dụng dịch vụ của chúng tôi.",
+    "suggestion": "Kiểm tra chi tiết lịch sử sử dụng data và cước phát sinh của thuê bao Nguyễn Văn A, đối chiếu với chính sách gói cước 4G/5G đang sử dụng để xác định nguyên nhân và đưa ra giải pháp phù hợp."
+  },
+  {
+    "id": "TS02",
+    "content": "SIM của tôi bị khóa 2 chiều dù tôi đã nạp tiền đầy đủ, tôi rất cần liên lạc gấp, xin xử lý ngay!!!",
+    "expected": {
+      "category": "SIM",
+      "priority": "High Priority",
+      "sentiment": "Rất tiêu cực"
+    },
+    "actual": {
+      "category": "SIM",
+      "priority": "High Priority",
+      "sentiment": "Rất tiêu cực"
+    },
+    "match": {
+      "category": true,
+      "priority": true,
+      "sentiment": true
+    },
+    "latencyMs": 17633,
+    "reply": "Kính chào Quý khách Trần Thị B, chúng tôi đã nhận được khiếu nại của Quý khách về việc SIM bị khóa 2 chiều dù đã nạp tiền đầy đủ. Chúng tôi rất tiếc về sự bất tiện này và hiểu rõ sự cần thiết trong việc liên lạc của Quý khách. Chúng tôi đang khẩn trương kiểm tra và xử lý vấn đề của Quý khách ngay lập tức. Vui lòng giữ liên lạc, chúng tôi sẽ cập nhật thông tin và hướng dẫn cụ thể trong thời gian sớm nhất. Xin chân thành cảm ơn sự thông cảm và hợp tác của Quý khách.",
+    "suggestion": "Kiểm tra ngay trạng thái tài khoản và lịch sử giao dịch nạp tiền của số thuê bao khách hàng. Xác định nguyên nhân SIM bị khóa (lỗi hệ thống, hết hạn sử dụng, hoặc lý do khác). Ưu tiên mở khóa SIM khẩn cấp và thông báo kết quả cho khách hàng trong thời gian sớm nhất."
+  },
+  {
+    "id": "TS03",
+    "content": "Mạng nhà tôi cứ chập chờn suốt cả tuần nay, gọi điện toàn bị rớt sóng, quá bực mình.",
+    "expected": {
+      "category": "Đường truyền",
+      "priority": "High Priority",
+      "sentiment": "Tiêu cực"
+    },
+    "actual": {
+      "category": "Đường truyền",
+      "priority": "High Priority",
+      "sentiment": "Rất tiêu cực"
+    },
+    "match": {
+      "category": true,
+      "priority": true,
+      "sentiment": false
+    },
+    "latencyMs": 5758,
+    "reply": "Kính gửi anh Lê Văn C, chúng tôi rất tiếc khi biết về trải nghiệm không hài lòng của anh với dịch vụ mạng trong suốt tuần qua. Chúng tôi hiểu sự bất tiện khi mạng chập chờn và rớt sóng làm gián đoạn liên lạc. Chúng tôi đã tiếp nhận thông tin và đang khẩn trương kiểm tra hệ thống. Nhân viên kỹ thuật sẽ sớm liên hệ với anh để hỗ trợ khắc phục sự cố một cách nhanh nhất. Mong anh thông cảm và kiên nhẫn chờ đợi. Trân trọng.",
+    "suggestion": "Kiểm tra tình trạng đường truyền tại khu vực của khách hàng. Yêu cầu bộ phận kỹ thuật hỗ trợ kiểm tra và khắc phục sự cố. Liên hệ khách hàng để xác minh thêm thông tin và hướng dẫn xử lý ban đầu."
+  },
+  {
+    "id": "TS04",
+    "content": "Tôi đã thanh toán hóa đơn tháng 8 nhưng hệ thống vẫn báo nợ cước, phiền anh chị kiểm tra lại giúp.",
+    "expected": {
+      "category": "Thanh toán",
+      "priority": "Medium",
+      "sentiment": "Tiêu cực"
+    },
+    "actual": {
+      "category": "Thanh toán",
+      "priority": "High Priority",
+      "sentiment": "Tiêu cực"
+    },
+    "match": {
+      "category": true,
+      "priority": false,
+      "sentiment": true
+    },
+    "latencyMs": 4824,
+    "reply": "Kính chào Quý khách Phạm Thị D,Chúng tôi đã tiếp nhận thông tin phản ánh của Quý khách về việc hóa đơn tháng 8 đã thanh toán nhưng hệ thống vẫn báo nợ cước. Chúng tôi rất tiếc vì sự bất tiện này.Bộ phận chuyên trách sẽ khẩn trương kiểm tra lại thông tin thanh toán của Quý khách và sẽ phản hồi kết quả trong thời gian sớm nhất.Xin chân thành cảm ơn sự hợp tác của Quý khách.",
+    "suggestion": "Kiểm tra chi tiết lịch sử thanh toán của khách hàng Phạm Thị D đối với hóa đơn tháng 8, đối chiếu với dữ liệu hệ thống báo nợ. Nếu phát hiện sai sót, tiến hành điều chỉnh ngay trên hệ thống. Liên hệ phòng ban kế toán/kỹ thuật nếu cần xác minh thêm."
+  },
+  {
+    "id": "TS05",
+    "content": "Cho tôi hỏi cách đổi sang gói cước sinh viên được không ạ?",
+    "expected": {
+      "category": "Gói cước/Dữ liệu",
+      "priority": "Low",
+      "sentiment": "Trung lập"
+    },
+    "actual": {
+      "category": "Gói cước/Dữ liệu",
+      "priority": "Low",
+      "sentiment": "Trung lập"
+    },
+    "match": {
+      "category": true,
+      "priority": true,
+      "sentiment": true
+    },
+    "latencyMs": 6049,
+    "reply": "Kính chào Quý khách Hoàng Văn E, Cảm ơn Quý khách đã quan tâm đến gói cước sinh viên. Để được hỗ trợ chuyển đổi, Quý khách vui lòng cung cấp thông tin về mã số sinh viên và trường đang học để chúng tôi kiểm tra điều kiện và hướng dẫn chi tiết các bước thực hiện. Hoặc Quý khách có thể truy cập mục 'Gói cước sinh viên' trên website của chúng tôi để tìm hiểu thêm. Trân trọng!",
+    "suggestion": "Yêu cầu nhân viên kiểm tra điều kiện chuyển đổi gói cước sinh viên cho khách hàng (như thẻ sinh viên, mã số sinh viên) và hướng dẫn chi tiết các bước thực hiện hoặc cung cấp liên kết đến trang thông tin gói cước sinh viên trên website."
+  },
+  {
+    "id": "TS06",
+    "content": "Nhân viên tư vấn rất nhiệt tình, tôi chỉ muốn phản hồi để khen ngợi dịch vụ.",
+    "expected": {
+      "category": "Khác",
+      "priority": "Low",
+      "sentiment": "Tích cực"
+    },
+    "actual": {
+      "category": "Khác",
+      "priority": "Low",
+      "sentiment": "Tích cực"
+    },
+    "match": {
+      "category": true,
+      "priority": true,
+      "sentiment": true
+    },
+    "latencyMs": 17161,
+    "reply": "Kính gửi chị Vũ Thị F,Chúng tôi vô cùng cảm kích khi nhận được phản hồi tích cực của chị về sự nhiệt tình của nhân viên tư vấn và chất lượng dịch vụ của chúng tôi.Ý kiến của chị là nguồn động viên quý báu để chúng tôi không ngừng nâng cao trải nghiệm khách hàng. Chúng tôi đã ghi nhận và sẽ chuyển lời khen của chị đến bộ phận liên quan.Chân thành cảm ơn chị đã tin tưởng và sử dụng dịch vụ của chúng tôi!",
+    "suggestion": "Ghi nhận phản hồi tích cực của khách hàng. Chuyển thông tin khen ngợi đến phòng ban/nhân viên liên quan để khích lệ và xem xét các chương trình công nhận nhân viên."
+  },
+  {
+    "id": "TS07",
+    "content": "SIM 4G của tôi không nhận được sóng khi đi công tác ở tỉnh, ảnh hưởng công việc rất nhiều.",
+    "expected": {
+      "category": "SIM",
+      "priority": "High Priority",
+      "sentiment": "Tiêu cực"
+    },
+    "actual": {
+      "category": "Đường truyền",
+      "priority": "High Priority",
+      "sentiment": "Tiêu cực"
+    },
+    "match": {
+      "category": false,
+      "priority": true,
+      "sentiment": true
+    },
+    "latencyMs": 9551,
+    "reply": "Kính chào Anh/Chị Đặng Văn G, Chúng tôi rất tiếc khi biết SIM 4G của Anh/Chị gặp vấn đề không nhận được sóng trong chuyến công tác, gây ảnh hưởng đáng kể đến công việc. Chúng tôi thành thật xin lỗi vì sự bất tiện này. Để chúng tôi có thể hỗ trợ kiểm tra và khắc phục nhanh chóng, Anh/Chị vui lòng cung cấp thêm một số thông tin chi tiết: 1. Tên tỉnh/thành phố và địa chỉ cụ thể (số nhà, đường, phường/xã) nơi Anh/Chị đang công tác. 2. Anh/Chị đang sử dụng loại điện thoại nào? 3. Vấn đề này bắt đầu từ khi nào? Trong lúc chờ đợi, Anh/Chị vui lòng thử khởi động lại thiết bị hoặc kiểm tra lại cài đặt mạng trên điện thoại. Chúng tôi sẽ ưu tiên xử lý trường hợp của Anh/Chị và phản hồi sớm nhất. Anh/Chị có thể liên hệ tổng đài của chúng tôi để được hỗ trợ trực tiếp. Trân trọng,",
+    "suggestion": "1. Xác minh thông tin thuê bao của khách hàng. 2. Yêu cầu khách hàng cung cấp địa điểm chính xác (tỉnh, huyện, xã, địa chỉ cụ thể) và thời gian bắt đầu sự cố để kiểm tra vùng phủ sóng và tình trạng mạng tại khu vực đó. 3. Hướng dẫn khách hàng thực hiện các bước khắc phục cơ bản: khởi động lại điện thoại, kiểm tra cài đặt mạng (chọn đúng loại mạng 4G), thử SIM trên thiết bị khác. 4. Nếu vẫn không có sóng, chuyển thông tin lên bộ phận kỹ thuật để kiểm tra chất lượng đường truyền hoặc sự cố trạm phát sóng tại địa điểm khách hàng đang gặp vấn đề. 5. Ghi nhận toàn bộ thông tin và cập nhật tiến độ xử lý cho khách hàng."
+  },
+  {
+    "id": "TS08",
+    "content": "Tốc độ internet cáp quang chậm hơn hẳn so với gói tôi đã đăng ký, mong được kiểm tra và khắc phục.",
+    "expected": {
+      "category": "Đường truyền",
+      "priority": "Medium",
+      "sentiment": "Tiêu cực"
+    },
+    "actual": {
+      "category": "Đường truyền",
+      "priority": "High Priority",
+      "sentiment": "Tiêu cực"
+    },
+    "match": {
+      "category": true,
+      "priority": false,
+      "sentiment": true
+    },
+    "latencyMs": 7802,
+    "reply": "Kính gửi Quý khách Bùi Thị H, chúng tôi rất tiếc khi biết về sự cố tốc độ internet cáp quang nhà mình đang chậm hơn so với gói đã đăng ký. Chúng tôi hiểu rằng điều này gây ảnh hưởng đến trải nghiệm của Quý khách. Chúng tôi đã tiếp nhận thông tin và sẽ nhanh chóng kiểm tra đường truyền. Bộ phận kỹ thuật của chúng tôi sẽ liên hệ lại với Quý khách trong thời gian sớm nhất để hỗ trợ khắc phục sự cố này. Rất mong Quý khách thông cảm và chờ đợi. Trân trọng.",
+    "suggestion": "Kiểm tra thông tin gói cước và thực hiện kiểm tra đường truyền từ xa. Nếu không khắc phục được, phối hợp với bộ phận kỹ thuật để lên lịch hẹn cử nhân viên xuống kiểm tra tận nơi."
+  },
+  {
+    "id": "TS09",
+    "content": "Tôi bị trừ tiền 2 lần cho cùng 1 hóa đơn, đề nghị hoàn lại tiền thừa.",
+    "expected": {
+      "category": "Thanh toán",
+      "priority": "High Priority",
+      "sentiment": "Rất tiêu cực"
+    },
+    "actual": {
+      "category": "Thanh toán",
+      "priority": "High Priority",
+      "sentiment": "Tiêu cực"
+    },
+    "match": {
+      "category": true,
+      "priority": true,
+      "sentiment": false
+    },
+    "latencyMs": 7631,
+    "reply": "Kính gửi Quý khách Ngô Văn I,Chúng tôi đã nhận được phản ánh của Quý khách về việc bị trừ tiền hai lần cho cùng một hóa đơn và rất lấy làm tiếc về sự bất tiện này. Chúng tôi sẽ khẩn trương kiểm tra lại hệ thống và thông tin giao dịch của Quý khách để xác minh sự việc. Sau khi có kết quả, chúng tôi sẽ liên hệ lại với Quý khách trong thời gian sớm nhất để thông báo về hướng xử lý và quy trình hoàn tiền (nếu có). Mong Quý khách thông cảm và chờ đợi phản hồi từ chúng tôi.",
+    "suggestion": "Kiểm tra ngay lịch sử giao dịch thanh toán của khách hàng Ngô Văn I để xác minh thông tin bị trừ tiền hai lần cho cùng một hóa đơn. Nếu xác nhận có sai sót, lập tức tiến hành quy trình hoàn tiền và thông báo cho khách hàng về thời gian xử lý dự kiến."
+  },
+  {
+    "id": "TS10",
+    "content": "Tôi muốn đăng ký thêm dịch vụ chuyển vùng quốc tế, thủ tục như thế nào ạ?",
+    "expected": {
+      "category": "Khác",
+      "priority": "Low",
+      "sentiment": "Trung lập"
+    },
+    "actual": {
+      "category": "Gói cước/Dữ liệu",
+      "priority": "Low",
+      "sentiment": "Trung lập"
+    },
+    "match": {
+      "category": false,
+      "priority": true,
+      "sentiment": true
+    },
+    "latencyMs": 7774,
+    "reply": "Kính chào Quý khách Đỗ Thị K, Cảm ơn Quý khách đã quan tâm đến dịch vụ chuyển vùng quốc tế của chúng tôi. Để hỗ trợ Quý khách một cách nhanh chóng và chính xác nhất về thủ tục và các gói cước roaming phù hợp, xin Quý khách vui lòng cung cấp số thuê bao của mình. Đội ngũ chúng tôi sẽ kiểm tra thông tin và hướng dẫn chi tiết ngay lập tức ạ. Trân trọng!",
+    "suggestion": "Hướng dẫn chi tiết khách hàng về thủ tục đăng ký chuyển vùng quốc tế (roaming), bao gồm các điều kiện, cách thức đăng ký qua SMS/USSD/ứng dụng và các gói cước đi kèm (nếu có). Yêu cầu khách hàng cung cấp số thuê bao để hỗ trợ kiểm tra và đăng ký trực tiếp nếu khách hàng đồng ý."
+  },
+  {
+    "id": "TS11",
+    "content": "Data 4G của tôi bị giảm tốc độ dù chưa dùng hết dung lượng trong gói, mong kiểm tra.",
+    "expected": {
+      "category": "Gói cước/Dữ liệu",
+      "priority": "Medium",
+      "sentiment": "Tiêu cực"
+    },
+    "actual": {
+      "category": "Gói cước/Dữ liệu",
+      "priority": "High Priority",
+      "sentiment": "Tiêu cực"
+    },
+    "match": {
+      "category": true,
+      "priority": false,
+      "sentiment": true
+    },
+    "latencyMs": 4800,
+    "reply": "Kính chào anh/chị Trịnh Văn L, chúng tôi đã nhận được phản ánh của anh/chị về việc tốc độ 4G bị giảm dù chưa dùng hết dung lượng gói cước. Chúng tôi rất tiếc về sự bất tiện này. Bộ phận kỹ thuật của chúng tôi sẽ tiến hành kiểm tra ngay lập tức để xác định nguyên nhân và khắc phục. Chúng tôi sẽ liên hệ lại với anh/chị trong thời gian sớm nhất để thông báo kết quả. Chân thành cảm ơn sự thông cảm và hợp tác của anh/chị.",
+    "suggestion": "Yêu cầu kiểm tra chi tiết thông tin gói cước, lịch sử sử dụng data và tình trạng đường truyền 4G của thuê bao Trịnh Văn L. Xác định nguyên nhân giảm tốc độ (hết dung lượng tốc độ cao, khu vực sóng yếu, lỗi hệ thống) và thông báo lại cho khách hàng."
+  },
+  {
+    "id": "TS12",
+    "content": "SIM của con tôi bị mất, tôi cần khóa SIM gấp để tránh bị lợi dụng.",
+    "expected": {
+      "category": "SIM",
+      "priority": "High Priority",
+      "sentiment": "Tiêu cực"
+    },
+    "actual": {
+      "category": "SIM",
+      "priority": "High Priority",
+      "sentiment": "Tiêu cực"
+    },
+    "match": {
+      "category": true,
+      "priority": true,
+      "sentiment": true
+    },
+    "latencyMs": 6529,
+    "reply": "Kính chào chị Lý Thị M, chúng tôi đã tiếp nhận yêu cầu khóa SIM khẩn cấp của chị. Chúng tôi hiểu sự lo lắng của chị về việc mất SIM và khả năng bị lợi dụng. Để đảm bảo an toàn thông tin và xử lý nhanh chóng, chúng tôi sẽ liên hệ trực tiếp với chị qua số điện thoại đã đăng ký để xác minh thông tin và tiến hành khóa SIM ngay lập tức. Sau đó, chúng tôi sẽ hướng dẫn chị các bước cần thiết để cấp lại SIM mới. Trân trọng cảm ơn chị đã tin tưởng và sử dụng dịch vụ.",
+    "suggestion": "Xác minh thông tin chủ thuê bao và người yêu cầu. Thực hiện khóa SIM khẩn cấp ngay lập tức. Hướng dẫn khách hàng thủ tục cấp lại SIM và các giấy tờ cần thiết."
+  },
+  {
+    "id": "TS13",
+    "content": "Wifi nhà tôi bị mất kết nối liên tục vào buổi tối, đã báo kỹ thuật 3 lần vẫn chưa sửa được.",
+    "expected": {
+      "category": "Đường truyền",
+      "priority": "High Priority",
+      "sentiment": "Rất tiêu cực"
+    },
+    "actual": {
+      "category": "Đường truyền",
+      "priority": "High Priority",
+      "sentiment": "Rất tiêu cực"
+    },
+    "match": {
+      "category": true,
+      "priority": true,
+      "sentiment": true
+    },
+    "latencyMs": 5311,
+    "reply": "Kính gửi anh Phan Văn N,Chúng tôi chân thành xin lỗi về sự bất tiện và khó chịu mà anh đang gặp phải với dịch vụ Wifi tại nhà. Chúng tôi đã tiếp nhận thông tin phản ánh về việc đường truyền bị mất kết nối liên tục vào buổi tối và sự cố chưa được khắc phục dù đã báo kỹ thuật 3 lần.Chúng tôi hiểu rằng đây là một vấn đề nghiêm trọng ảnh hưởng đến trải nghiệm của anh. Hiện tại, chúng tôi đang khẩn trương kiểm tra lại các yêu cầu trước đây của anh và sẽ liên hệ lại trong thời gian sớm nhất để xác nhận thông tin chi tiết và sắp xếp lịch kiểm tra, xử lý sự cố một cách triệt để.Mong anh thông cảm và chờ đợi.Trân trọng,Bộ phận Chăm sóc khách hàng.",
+    "suggestion": "Kiểm tra lịch sử các yêu cầu hỗ trợ trước đó của khách hàng Phan Văn N. Liên hệ ngay với khách hàng để thu thập thông tin chi tiết về sự cố (thời gian cụ thể, tình trạng đèn tín hiệu trên modem) và sắp xếp kỹ thuật viên đến kiểm tra tận nơi trong thời gian sớm nhất có thể. Đảm bảo kỹ thuật viên có đủ thông tin để khắc phục triệt để vấn đề."
+  },
+  {
+    "id": "TS14",
+    "content": "Tôi muốn hỏi hạn thanh toán cước tháng này là ngày nào.",
+    "expected": {
+      "category": "Thanh toán",
+      "priority": "Low",
+      "sentiment": "Trung lập"
+    },
+    "actual": {
+      "category": "Thanh toán",
+      "priority": "Low",
+      "sentiment": "Trung lập"
+    },
+    "match": {
+      "category": true,
+      "priority": true,
+      "sentiment": true
+    },
+    "latencyMs": 4693,
+    "reply": "Chào bạn Dương Thị O, cảm ơn bạn đã liên hệ. Để có thể thông báo chính xác hạn thanh toán cước tháng này, phiền bạn vui lòng cung cấp thêm số thuê bao hoặc thông tin tài khoản để chúng tôi hỗ trợ kiểm tra ạ. Rất mong nhận được phản hồi từ bạn.",
+    "suggestion": "Kiểm tra thông tin tài khoản của khách hàng (số thuê bao) để cung cấp hạn thanh toán cước tháng hiện tại một cách chính xác."
+  },
+  {
+    "id": "TS15",
+    "content": "Ứng dụng chăm sóc khách hàng bị lỗi không đăng nhập được.",
+    "expected": {
+      "category": "Khác",
+      "priority": "Medium",
+      "sentiment": "Tiêu cực"
+    },
+    "actual": {
+      "category": "Khác",
+      "priority": "Medium",
+      "sentiment": "Trung lập"
+    },
+    "match": {
+      "category": true,
+      "priority": true,
+      "sentiment": false
+    },
+    "latencyMs": 9049,
+    "reply": "Kính chào Quý khách Mai Văn P, Cảm ơn Quý khách đã liên hệ và thông báo về sự cố đăng nhập ứng dụng chăm sóc khách hàng. Chúng tôi rất tiếc về sự bất tiện này. Chúng tôi đã ghi nhận phản ánh của Quý khách và đang kiểm tra hệ thống. Trong thời gian chờ đợi, Quý khách vui lòng thử một số bước khắc phục cơ bản như: kiểm tra kết nối mạng, xóa dữ liệu và bộ nhớ đệm (cache) của ứng dụng, hoặc gỡ cài đặt và cài đặt lại ứng dụng. Nếu vẫn không đăng nhập được, xin Quý khách vui lòng liên hệ tổng đài hỗ trợ hoặc truy cập website chính thức của chúng tôi để được hỗ trợ kịp thời. Chúng tôi sẽ nỗ lực khắc phục sự cố này sớm nhất. Trân trọng.",
+    "suggestion": "Kiểm tra tình trạng lỗi đăng nhập ứng dụng trên hệ thống nội bộ và ghi nhận. Hướng dẫn khách hàng thử các bước khắc phục cơ bản (xóa cache, cài đặt lại ứng dụng, kiểm tra kết nối mạng). Nếu không khắc phục được, chuyển thông tin tới bộ phận kỹ thuật để kiểm tra tài khoản hoặc ghi nhận lỗi. Đồng thời, cung cấp kênh hỗ trợ thay thế như tổng đài hoặc website."
+  },
+  {
+    "id": "TS16",
+    "error": "{\"error\":{\"code\":503,\"message\":\"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.\",\"status\":\"UNAVAILABLE\"}}"
+  },
+  {
+    "id": "TS17",
+    "error": "{\"error\":{\"code\":429,\"message\":\"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash\\nPlease retry in 15.285298825s.\",\"status\":\"RESOURCE_EXHAUSTED\",\"details\":[{\"@type\":\"type.googleapis.com/google.rpc.Help\",\"links\":[{\"description\":\"Learn more about Gemini API quotas\",\"url\":\"https://ai.google.dev/gemini-api/docs/rate-limits\"}]},{\"@type\":\"type.googleapis.com/google.rpc.QuotaFailure\",\"violations\":[{\"quotaMetric\":\"generativelanguage.googleapis.com/generate_content_free_tier_requests\",\"quotaId\":\"GenerateRequestsPerDayPerProjectPerModel-FreeTier\",\"quotaDimensions\":{\"location\":\"global\",\"model\":\"gemini-2.5-flash\"},\"quotaValue\":\"20\"}]},{\"@type\":\"type.googleapis.com/google.rpc.RetryInfo\",\"retryDelay\":\"15s\"}]}}"
+  },
+  {
+    "id": "TS18",
+    "error": "{\"error\":{\"code\":429,\"message\":\"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash\\nPlease retry in 53.715656861s.\",\"status\":\"RESOURCE_EXHAUSTED\",\"details\":[{\"@type\":\"type.googleapis.com/google.rpc.Help\",\"links\":[{\"description\":\"Learn more about Gemini API quotas\",\"url\":\"https://ai.google.dev/gemini-api/docs/rate-limits\"}]},{\"@type\":\"type.googleapis.com/google.rpc.QuotaFailure\",\"violations\":[{\"quotaMetric\":\"generativelanguage.googleapis.com/generate_content_free_tier_requests\",\"quotaId\":\"GenerateRequestsPerDayPerProjectPerModel-FreeTier\",\"quotaDimensions\":{\"model\":\"gemini-2.5-flash\",\"location\":\"global\"},\"quotaValue\":\"20\"}]},{\"@type\":\"type.googleapis.com/google.rpc.RetryInfo\",\"retryDelay\":\"53s\"}]}}"
+  },
+  {
+    "id": "TS19",
+    "error": "{\"error\":{\"code\":429,\"message\":\"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash\\nPlease retry in 30.956331635s.\",\"status\":\"RESOURCE_EXHAUSTED\",\"details\":[{\"@type\":\"type.googleapis.com/google.rpc.Help\",\"links\":[{\"description\":\"Learn more about Gemini API quotas\",\"url\":\"https://ai.google.dev/gemini-api/docs/rate-limits\"}]},{\"@type\":\"type.googleapis.com/google.rpc.QuotaFailure\",\"violations\":[{\"quotaMetric\":\"generativelanguage.googleapis.com/generate_content_free_tier_requests\",\"quotaId\":\"GenerateRequestsPerDayPerProjectPerModel-FreeTier\",\"quotaDimensions\":{\"location\":\"global\",\"model\":\"gemini-2.5-flash\"},\"quotaValue\":\"20\"}]},{\"@type\":\"type.googleapis.com/google.rpc.RetryInfo\",\"retryDelay\":\"30s\"}]}}"
+  },
+  {
+    "id": "TS20",
+    "error": "{\"error\":{\"code\":429,\"message\":\"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash\\nPlease retry in 9.34138789s.\",\"status\":\"RESOURCE_EXHAUSTED\",\"details\":[{\"@type\":\"type.googleapis.com/google.rpc.Help\",\"links\":[{\"description\":\"Learn more about Gemini API quotas\",\"url\":\"https://ai.google.dev/gemini-api/docs/rate-limits\"}]},{\"@type\":\"type.googleapis.com/google.rpc.QuotaFailure\",\"violations\":[{\"quotaMetric\":\"generativelanguage.googleapis.com/generate_content_free_tier_requests\",\"quotaId\":\"GenerateRequestsPerDayPerProjectPerModel-FreeTier\",\"quotaDimensions\":{\"location\":\"global\",\"model\":\"gemini-2.5-flash\"},\"quotaValue\":\"20\"}]},{\"@type\":\"type.googleapis.com/google.rpc.RetryInfo\",\"retryDelay\":\"9s\"}]}}"
+  }
+]
