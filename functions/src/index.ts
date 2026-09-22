@@ -287,41 +287,46 @@ export const submitTicketRating = onCall(
     const normalizedComment = typeof comment === "string" ? comment.trim().slice(0, 500) : "";
     const normalizedCode = code.trim().toUpperCase();
 
-    const snapshot = await db
-      .collection("tickets")
-      .where("code", "==", normalizedCode)
-      .limit(1)
-      .get();
+    // Đọc-kiểm tra-ghi phải nằm chung 1 transaction — nếu tách rời (đọc rồi
+    // mới update như trước) thì 2 lần bấm gửi đánh giá liên tiếp thật nhanh
+    // (double-tap, mạng lag rồi bấm lại) có thể cùng lúc pass qua bước kiểm
+    // tra "chưa đánh giá" trước khi bước ghi kịp chạy, dẫn tới ghi đè lẫn
+    // nhau + tạo 2 dòng lịch sử "rated" trùng lặp cho cùng 1 ticket.
+    await db.runTransaction(async (transaction) => {
+      const snapshot = await transaction.get(
+        db.collection("tickets").where("code", "==", normalizedCode).limit(1)
+      );
 
-    const doc = snapshot.docs[0];
+      const doc = snapshot.docs[0];
 
-    if (!doc || doc.data().phone !== phone) {
-      throw new HttpsError("not-found", "Không tìm thấy khiếu nại phù hợp.");
-    }
+      if (!doc || doc.data().phone !== phone) {
+        throw new HttpsError("not-found", "Không tìm thấy khiếu nại phù hợp.");
+      }
 
-    const data = doc.data();
+      const data = doc.data();
 
-    if (!data.finalReply) {
-      throw new HttpsError("failed-precondition", "Khiếu nại chưa được phản hồi, chưa thể đánh giá.");
-    }
+      if (!data.finalReply) {
+        throw new HttpsError("failed-precondition", "Khiếu nại chưa được phản hồi, chưa thể đánh giá.");
+      }
 
-    if (data.rating != null) {
-      throw new HttpsError("already-exists", "Khiếu nại này đã được đánh giá trước đó.");
-    }
+      if (data.rating != null) {
+        throw new HttpsError("already-exists", "Khiếu nại này đã được đánh giá trước đó.");
+      }
 
-    await doc.ref.update({
-      rating,
-      ratingComment: normalizedComment || null,
-      ratedAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+      transaction.update(doc.ref, {
+        rating,
+        ratingComment: normalizedComment || null,
+        ratedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
 
-    await doc.ref.collection("history").add({
-      ticketId: doc.id,
-      ticketCode: data.code ?? normalizedCode,
-      action: "rated",
-      actorName: data.customerName ?? "Khách hàng",
-      createdAt: FieldValue.serverTimestamp(),
+      transaction.set(doc.ref.collection("history").doc(), {
+        ticketId: doc.id,
+        ticketCode: data.code ?? normalizedCode,
+        action: "rated",
+        actorName: data.customerName ?? "Khách hàng",
+        createdAt: FieldValue.serverTimestamp(),
+      });
     });
 
     return { success: true };
