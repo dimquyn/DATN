@@ -158,7 +158,9 @@ export default function TicketDetailScreen() {
 
     try {
       const options = {
-        ...(action.nextStatus === "in_progress" ? { assignedTo: user.uid } : {}),
+        ...(action.nextStatus === "in_progress"
+          ? { assignedTo: user.uid, assignedToName: user.email ?? undefined }
+          : {}),
         history: { actorName: user.email ?? "Nhân viên", ticketCode: ticket.code },
       };
 
@@ -170,6 +172,7 @@ export default function TicketDetailScreen() {
               ...prev,
               status: action.nextStatus,
               assignedTo: options?.assignedTo ?? prev.assignedTo,
+              assignedToName: options?.assignedToName ?? prev.assignedToName,
             }
           : prev
       );
@@ -352,7 +355,11 @@ export default function TicketDetailScreen() {
               <View style={styles.card}>
                 <InfoRow
                   label="NGƯỜI XỬ LÝ"
-                  value={ticket.assignedTo === user.uid ? "Bạn" : ticket.assignedTo}
+                  value={
+                    ticket.assignedTo === user.uid
+                      ? "Bạn"
+                      : ticket.assignedToName ?? ticket.assignedTo ?? "Không xác định"
+                  }
                   isLast
                 />
               </View>

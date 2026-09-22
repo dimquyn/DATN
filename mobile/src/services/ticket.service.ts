@@ -28,6 +28,7 @@ function mapTicketData(id: string, data: DocumentData): Ticket {
     channel: data.channel,
     status: data.status,
     assignedTo: data.assignedTo ?? null,
+    assignedToName: data.assignedToName ?? null,
     aiResultId: data.aiResultId ?? null,
     priority: data.priority ?? null,
     finalReply: data.finalReply ?? null,
@@ -85,6 +86,8 @@ export async function getTicketById(ticketId: string): Promise<Ticket | null> {
 export interface UpdateTicketStatusOptions {
   /** Chỉ truyền khi nhân viên "Nhận xử lý" (ai_analyzed -> in_progress). */
   assignedTo?: string;
+  /** Email nhân viên, đi kèm assignedTo — dùng để hiển thị thay vì UID thô. */
+  assignedToName?: string;
   /**
    * Nội dung phản hồi thực tế đã gửi khách hàng, ghi vào tickets.finalReply
    * khi xác nhận đã phản hồi (in_progress -> responded).
@@ -122,6 +125,10 @@ export async function updateTicketStatus(
 
   if (options?.assignedTo) {
     updates.assignedTo = options.assignedTo;
+  }
+
+  if (options?.assignedToName) {
+    updates.assignedToName = options.assignedToName;
   }
 
   if (options?.finalReply !== undefined) {

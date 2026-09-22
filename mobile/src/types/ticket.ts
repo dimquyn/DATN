@@ -19,6 +19,9 @@ export interface Ticket {
   channel: TicketChannel;
   status: TicketStatus;
   assignedTo: string | null;
+  /** Email nhân viên đã nhận xử lý — lưu kèm lúc nhận xử lý để hiển thị
+   *  thay vì UID thô (client không tra được tên từ UID qua Auth). */
+  assignedToName: string | null;
   aiResultId: string | null;
   priority: "High Priority" | "Medium" | "Low" | null;
   finalReply: string | null;

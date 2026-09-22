@@ -53,11 +53,12 @@ service cloud.firestore {
           // commit trước sẽ khiến request của người còn lại bị từ chối vì
           // lúc đó resource.data.assignedTo không còn null nữa.
           (
-            changedKeys.hasOnly(['status', 'assignedTo', 'updatedAt'])
+            changedKeys.hasOnly(['status', 'assignedTo', 'assignedToName', 'updatedAt'])
             && (before.status == 'ai_analyzed' || (before.status == 'pending' && 'lastAIError' in before))
             && before.assignedTo == null
             && after.status == 'in_progress'
             && after.assignedTo == request.auth.uid
+            && (!('assignedToName' in after) || after.assignedToName is string)
           )
           // "Xác nhận đã phản hồi": in_progress -> responded, kèm finalReply.
           || (
