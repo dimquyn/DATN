@@ -77,6 +77,7 @@ export default function TrackPage() {
               Trạng thái hiện tại:{" "}
               <span className="font-semibold text-gray-800">{TICKET_STATUS_LABELS[ticket.status]}</span>
             </p>
+            <p className="mt-1 text-xs text-gray-400">Trang tự động cập nhật, không cần tải lại.</p>
           </div>
 
           {ticket.finalReply ? (

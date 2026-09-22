@@ -8,6 +8,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../contexts/AuthContext";
 import { changePassword } from "../../services/auth.service";
@@ -17,6 +18,7 @@ import type { Ticket } from "../../types/ticket";
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { user, logout } = useAuth();
 
   const [tickets, setTickets] = useState<Ticket[]>([]);
@@ -116,14 +118,24 @@ export default function ProfileScreen() {
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>Thống kê cá nhân</Text>
         <View style={styles.statRow}>
-          <View style={styles.statItem}>
+          <Pressable
+            style={styles.statItem}
+            onPress={() =>
+              router.push({ pathname: "/tickets", params: { filter: "in_progress", mine: "1" } })
+            }
+          >
             <Text style={styles.statValue}>{myStats.inProgress}</Text>
             <Text style={styles.statLabel}>Đang xử lý</Text>
-          </View>
-          <View style={styles.statItem}>
+          </Pressable>
+          <Pressable
+            style={styles.statItem}
+            onPress={() =>
+              router.push({ pathname: "/tickets", params: { filter: "closed", mine: "1" } })
+            }
+          >
             <Text style={[styles.statValue, { color: "#047857" }]}>{myStats.done}</Text>
             <Text style={styles.statLabel}>Đã hoàn thành</Text>
-          </View>
+          </Pressable>
         </View>
         <Text style={styles.processedText}>
           Tổng số ticket đã xử lý: <Text style={styles.processedValue}>{myStats.done}</Text>

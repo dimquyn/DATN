@@ -12,6 +12,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FullScreenLoading } from "../../components/common/FullScreenLoading";
 import { TicketCard } from "../../components/cards/TicketCard";
+import { useAuth } from "../../contexts/AuthContext";
 import { subscribeToTickets } from "../../services/ticket.service";
 import { AI_PRIORITY_LABELS } from "../../constants/ai-priority";
 import { isTicketOverdue } from "../../utils/ticket-sla";
@@ -56,9 +57,11 @@ function matchesFilter(ticket: Ticket, filter: FilterKey): boolean {
 export default function TicketsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { filter: filterParam, priority: priorityParam } = useLocalSearchParams<{
+  const { user } = useAuth();
+  const { filter: filterParam, priority: priorityParam, mine: mineParam } = useLocalSearchParams<{
     filter?: string;
     priority?: string;
+    mine?: string;
   }>();
 
   const [tickets, setTickets] = useState<Ticket[]>([]);
@@ -68,6 +71,11 @@ export default function TicketsScreen() {
   const [searchText, setSearchText] = useState<string>("");
   const [filter, setFilter] = useState<FilterKey>("all");
   const [priorityFilter, setPriorityFilter] = useState<AIPriority | null>(null);
+  // "Ticket của tôi" — bật khi điều hướng từ trang Cá nhân (bấm "Đang xử lý"/
+  // "Đã hoàn thành"). Độc lập với filter/priorityFilter, chỉ tắt khi bấm
+  // "Xóa lọc" riêng, để đổi filter trạng thái không vô tình bỏ luôn phạm vi
+  // "của tôi" mà người dùng đang muốn xem.
+  const [mineOnly, setMineOnly] = useState<boolean>(mineParam === "1");
 
   // Cho phép Tổng quan điều hướng tới đây kèm sẵn bộ lọc (vd bấm thẻ "Ticket mới"
   // hoặc bấm 1 dòng mức độ ưu tiên). 2 bộ lọc này độc lập nhau — chỉ nên áp
@@ -83,7 +91,11 @@ export default function TicketsScreen() {
       setPriorityFilter(resolvedPriority);
       setFilter("all");
     }
-  }, [filterParam, priorityParam]);
+
+    if (mineParam === "1") {
+      setMineOnly(true);
+    }
+  }, [filterParam, priorityParam, mineParam]);
 
   useEffect(() => {
     setLoading(true);
@@ -111,12 +123,13 @@ export default function TicketsScreen() {
     return tickets.filter((ticket) => {
       if (!matchesFilter(ticket, filter)) return false;
       if (priorityFilter && ticket.priority !== priorityFilter) return false;
+      if (mineOnly && ticket.assignedTo !== user?.uid) return false;
       if (!keyword) return true;
 
       const haystack = `${ticket.code ?? ""} ${ticket.customerName ?? ""} ${ticket.content ?? ""}`.toLowerCase();
       return haystack.includes(keyword);
     });
-  }, [tickets, filter, priorityFilter, searchText]);
+  }, [tickets, filter, priorityFilter, mineOnly, user?.uid, searchText]);
 
   return (
     <View style={styles.screen}>
@@ -162,6 +175,15 @@ export default function TicketsScreen() {
               Đang lọc theo mức độ ưu tiên: {AI_PRIORITY_LABELS[priorityFilter]}
             </Text>
             <Pressable onPress={() => setPriorityFilter(null)} hitSlop={8}>
+              <Text style={styles.priorityFilterClear}>Xóa lọc ✕</Text>
+            </Pressable>
+          </View>
+        )}
+
+        {mineOnly && (
+          <View style={styles.priorityFilterRow}>
+            <Text style={styles.priorityFilterText}>Chỉ hiện ticket của bạn</Text>
+            <Pressable onPress={() => setMineOnly(false)} hitSlop={8}>
               <Text style={styles.priorityFilterClear}>Xóa lọc ✕</Text>
             </Pressable>
           </View>

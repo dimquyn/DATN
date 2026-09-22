@@ -1,10 +1,16 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ChangeEvent, FocusEvent, FormEvent } from "react";
 import { trackTicket, submitTicketRating } from "../services/tracking.service";
 import { validatePhone } from "../utils/validation";
 import type { TrackedTicket } from "../types/ticket-tracking";
 
 type LookupField = "code" | "phone";
+
+// Khách hàng không đăng nhập nên firestore.rules không cho phép nghe
+// onSnapshot trực tiếp trên ticket (chỉ isStaff() mới đọc được) — mô phỏng
+// "thời gian thực" bằng cách tự gọi lại trackTicket định kỳ trong lúc đang
+// xem kết quả, để trạng thái/phản hồi cập nhật mà khách không cần bấm gì.
+const POLL_INTERVAL_MS = 5000;
 
 // Custom hook: toàn bộ state + logic của màn "Theo dõi trạng thái" (tra cứu
 // bằng mã ticket + số điện thoại, xem phản hồi, gửi đánh giá). Tách khỏi
@@ -95,6 +101,25 @@ export function useTrackTicket(initialCode?: string | null) {
     setTicket(null);
     setLookupError(null);
   };
+
+  // Chỉ chạy khi đã tìm thấy ticket (đang ở màn kết quả) — dừng hẳn khi
+  // resetLookup (quay về form) hoặc khi component unmount, tránh gọi lãng
+  // phí lúc khách chưa tra cứu hoặc đã rời trang.
+  useEffect(() => {
+    if (!ticket) return;
+
+    const intervalId = window.setInterval(async () => {
+      try {
+        const result = await trackTicket(form.code, form.phone);
+        setTicket(result);
+      } catch {
+        // Bỏ qua lỗi tạm thời (mất mạng 1 nhịp...) — giữ nguyên dữ liệu cũ,
+        // lần poll kế tiếp tự thử lại, không cần làm phiền khách bằng lỗi.
+      }
+    }, POLL_INTERVAL_MS);
+
+    return () => window.clearInterval(intervalId);
+  }, [ticket?.code, form.code, form.phone]);
 
   return {
     form,
