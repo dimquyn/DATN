@@ -1,10 +1,11 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import { onSchedule } from "firebase-functions/v2/scheduler";
 import { defineSecret } from "firebase-functions/params";
 import { logger } from "firebase-functions/v2";
 import { GoogleGenAI, Type } from "@google/genai";
 import { initializeApp, getApps } from "firebase-admin/app";
-import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import { getFirestore, FieldValue, Timestamp } from "firebase-admin/firestore";
 
 if (getApps().length === 0) {
   initializeApp();
@@ -96,11 +97,147 @@ Hãy phân tích và trả về kết quả theo đúng cấu trúc JSON đã đ
 Chỉ trả về JSON, không thêm bất kỳ văn bản giải thích nào khác.`;
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Lỗi tạm thời phía Gemini (quá tải, hết quota theo phút, mạng chập chờn) —
+// đáng để thử lại; lỗi còn lại (prompt bị chặn, key sai...) thử lại cũng vô ích.
+function isRetryableGeminiError(error: unknown): boolean {
+  const status = (error as { status?: number })?.status;
+  if (status === 429 || status === 500 || status === 503) return true;
+
+  const message = error instanceof Error ? error.message : String(error);
+  return /RESOURCE_EXHAUSTED|UNAVAILABLE|ECONNRESET|ETIMEDOUT|fetch failed|timeout/i.test(message);
+}
+
+// Gọi Gemini tối đa 3 lần (0, 1s, 2s backoff) trong CÙNG một lượt xử lý ticket,
+// để vượt qua các lỗi thoáng qua mà không cần đợi tới lượt quét lại theo lịch.
+async function callGeminiWithRetry(ai: GoogleGenAI, prompt: string): Promise<string> {
+  const maxAttempts = 3;
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: AI_RESPONSE_SCHEMA,
+        },
+      });
+
+      if (!response.text) {
+        throw new Error("Gemini trả về response rỗng");
+      }
+
+      return response.text;
+    } catch (error) {
+      lastError = error;
+      const canRetry = attempt < maxAttempts && isRetryableGeminiError(error);
+      logger.warn(`[analyzeTicketWithAI] Gọi Gemini thất bại (lần ${attempt}/${maxAttempts}), retryable=${canRetry}:`, error);
+      if (!canRetry) break;
+      await sleep(1000 * attempt);
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error("Không gọi được Gemini API");
+}
+
+// Số lần tối đa mà job quét định kỳ (retryPendingAIAnalysis) sẽ thử lại một
+// ticket bị lỗi, trước khi để nhân viên xử lý thủ công.
+const MAX_SCHEDULED_AI_ATTEMPTS = 8;
+
+/**
+ * Chạy phân tích AI cho một ticket và ghi kết quả (ai_results + tickets +
+ * history). Dùng chung cho cả trigger tạo ticket mới lẫn job quét lại định kỳ.
+ * Ném lỗi nếu thất bại — nơi gọi chịu trách nhiệm ghi lastAIError/aiAttempts.
+ */
+async function runTicketAnalysis(
+  ticketId: string,
+  ticketData: FirebaseFirestore.DocumentData
+): Promise<void> {
+  const ticketRef = db.collection("tickets").doc(ticketId);
+
+  const customerName: string = ticketData?.customerName ?? "Khách hàng";
+  const content: string = ticketData?.content ?? "";
+  const channel: string = ticketData?.channel ?? "Không xác định";
+
+  const prompt = buildPrompt({ customerName, content, channel });
+  const ai = new GoogleGenAI({ apiKey: geminiApiKey.value() });
+
+  const rawText = await callGeminiWithRetry(ai, prompt);
+
+  let aiResult: AIAnalysisResult;
+  try {
+    aiResult = JSON.parse(rawText) as AIAnalysisResult;
+  } catch (parseError) {
+    logger.error(`[analyzeTicketWithAI] Lỗi parse JSON cho ticket ${ticketId}:`, rawText);
+    throw new Error("Không parse được JSON từ Gemini");
+  }
+
+  const requiredFields: (keyof AIAnalysisResult)[] = [
+    "category",
+    "priority",
+    "sentiment",
+    "summary",
+    "suggestion",
+    "reply",
+  ];
+  const missingField = requiredFields.find((field) => !aiResult[field]);
+  if (missingField) {
+    throw new Error(`Kết quả AI thiếu field bắt buộc: ${missingField}`);
+  }
+
+  const aiResultRef = await db.collection("ai_results").add({
+    ticketId,
+    category: aiResult.category,
+    priority: aiResult.priority,
+    sentiment: aiResult.sentiment,
+    summary: aiResult.summary,
+    suggestion: aiResult.suggestion,
+    reply: aiResult.reply,
+    analyzedAt: FieldValue.serverTimestamp(),
+  });
+
+  // Dùng transaction để đọc lại status mới nhất ngay trước khi ghi: job quét
+  // lại định kỳ (retryPendingAIAnalysis) có thể chạy đúng lúc nhân viên vừa
+  // "Nhận xử lý" thủ công một ticket AI từng lỗi (status pending -> in_progress).
+  // Nếu cứ ghi status "ai_analyzed" vô điều kiện sẽ đè mất việc nhận xử lý đó.
+  await db.runTransaction(async (transaction) => {
+    const freshTicket = await transaction.get(ticketRef);
+    const update: FirebaseFirestore.UpdateData<FirebaseFirestore.DocumentData> = {
+      aiResultId: aiResultRef.id,
+      // Lưu kèm priority ngay trên ticket (denormalize) để mobile hiển thị
+      // badge độ ưu tiên ở danh sách ticket mà không cần đọc thêm ai_results.
+      priority: aiResult.priority,
+      updatedAt: FieldValue.serverTimestamp(),
+      lastAIError: FieldValue.delete(),
+    };
+    if (freshTicket.data()?.status === "pending") {
+      update.status = "ai_analyzed";
+    }
+    transaction.update(ticketRef, update);
+  });
+
+  await ticketRef.collection("history").add({
+    ticketId,
+    ticketCode: ticketData?.code ?? null,
+    action: "ai_analyzed",
+    actorName: "Hệ thống AI",
+    createdAt: FieldValue.serverTimestamp(),
+  });
+
+  logger.info(`[analyzeTicketWithAI] Ticket ${ticketId} đã phân tích AI thành công -> aiResultId: ${aiResultRef.id}`);
+}
+
 export const analyzeTicketWithAI = onDocumentCreated(
   {
     document: "tickets/{ticketId}",
     region: "asia-southeast1",
     secrets: [geminiApiKey],
+    timeoutSeconds: 120,
   },
   async (event) => {
     const ticketId = event.params.ticketId;
@@ -112,96 +249,91 @@ export const analyzeTicketWithAI = onDocumentCreated(
     }
 
     const ticketRef = db.collection("tickets").doc(ticketId);
+    const ticketData = snapshot.data();
+    const content: string = ticketData?.content ?? "";
+
+    if (!content.trim()) {
+      logger.warn(`[analyzeTicketWithAI] Ticket ${ticketId} không có nội dung, bỏ qua phân tích AI`);
+      return;
+    }
 
     try {
-      const ticketData = snapshot.data();
-      const customerName: string = ticketData?.customerName ?? "Khách hàng";
-      const content: string = ticketData?.content ?? "";
-      const channel: string = ticketData?.channel ?? "Không xác định";
-
-      if (!content.trim()) {
-        logger.warn(`[analyzeTicketWithAI] Ticket ${ticketId} không có nội dung, bỏ qua phân tích AI`);
-        return;
-      }
-
-      const prompt = buildPrompt({ customerName, content, channel });
-
-      const ai = new GoogleGenAI({ apiKey: geminiApiKey.value() });
-
-      const geminiResponse = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: AI_RESPONSE_SCHEMA,
-        },
-      });
-
-      const rawText = geminiResponse.text;
-
-      if (!rawText) {
-        throw new Error("Gemini trả về response rỗng");
-      }
-
-      let aiResult: AIAnalysisResult;
-      try {
-        aiResult = JSON.parse(rawText) as AIAnalysisResult;
-      } catch (parseError) {
-        logger.error(`[analyzeTicketWithAI] Lỗi parse JSON cho ticket ${ticketId}:`, rawText);
-        throw new Error("Không parse được JSON từ Gemini");
-      }
-
-      const requiredFields: (keyof AIAnalysisResult)[] = [
-        "category",
-        "priority",
-        "sentiment",
-        "summary",
-        "suggestion",
-        "reply",
-      ];
-      const missingField = requiredFields.find((field) => !aiResult[field]);
-      if (missingField) {
-        throw new Error(`Kết quả AI thiếu field bắt buộc: ${missingField}`);
-      }
-
-      const aiResultRef = await db.collection("ai_results").add({
-        ticketId,
-        category: aiResult.category,
-        priority: aiResult.priority,
-        sentiment: aiResult.sentiment,
-        summary: aiResult.summary,
-        suggestion: aiResult.suggestion,
-        reply: aiResult.reply,
-        analyzedAt: FieldValue.serverTimestamp(),
-      });
-
-      await ticketRef.update({
-        status: "ai_analyzed",
-        aiResultId: aiResultRef.id,
-        // Lưu kèm priority ngay trên ticket (denormalize) để mobile hiển thị
-        // badge độ ưu tiên ở danh sách ticket mà không cần đọc thêm ai_results.
-        priority: aiResult.priority,
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-
-      await ticketRef.collection("history").add({
-        ticketId,
-        ticketCode: ticketData?.code ?? null,
-        action: "ai_analyzed",
-        actorName: "Hệ thống AI",
-        createdAt: FieldValue.serverTimestamp(),
-      });
-
-      logger.info(`[analyzeTicketWithAI] Ticket ${ticketId} đã phân tích AI thành công -> aiResultId: ${aiResultRef.id}`);
+      await runTicketAnalysis(ticketId, ticketData);
     } catch (error) {
       logger.error(`[analyzeTicketWithAI] Lỗi khi xử lý ticket ${ticketId}:`, error);
 
+      // Không rethrow: giữ status "pending" và để job quét lại định kỳ
+      // (retryPendingAIAnalysis) thử lại thay vì mất ticket vĩnh viễn.
       await ticketRef.update({
         updatedAt: FieldValue.serverTimestamp(),
         lastAIError: error instanceof Error ? error.message : "Unknown error",
+        aiAttempts: FieldValue.increment(1),
       }).catch((updateError) => {
         logger.error(`[analyzeTicketWithAI] Không thể ghi lastAIError cho ticket ${ticketId}:`, updateError);
       });
+    }
+  }
+);
+
+/**
+ * ============================================================
+ * Cloud Function: retryPendingAIAnalysis
+ * ============================================================
+ * Scheduled Function chạy mỗi 5 phút. Quét các ticket còn "pending" mà lần
+ * phân tích AI trước đó đã lỗi (lastAIError tồn tại) và thử lại, cho tới
+ * MAX_SCHEDULED_AI_ATTEMPTS lần. Đây là lưới an toàn cho các lỗi thoáng qua
+ * (Gemini quá tải, hết quota theo phút...) mà retry nội bộ của
+ * analyzeTicketWithAI chưa vượt qua được, đảm bảo tỉ lệ ticket được AI phân
+ * tích luôn ở mức cao (>95%) thay vì bị kẹt "pending" vĩnh viễn.
+ * ============================================================
+ */
+export const retryPendingAIAnalysis = onSchedule(
+  {
+    schedule: "every 5 minutes",
+    region: "asia-southeast1",
+    secrets: [geminiApiKey],
+    timeoutSeconds: 300,
+  },
+  async () => {
+    const snapshot = await db
+      .collection("tickets")
+      .where("status", "==", "pending")
+      .limit(200)
+      .get();
+
+    const candidates = snapshot.docs.filter((doc) => {
+      const data = doc.data();
+      const attempts = typeof data.aiAttempts === "number" ? data.aiAttempts : 0;
+      if (!data.lastAIError || attempts >= MAX_SCHEDULED_AI_ATTEMPTS) return false;
+
+      // Backoff tăng dần theo số lần đã thử (2, 4, 8... tối đa 60 phút) để
+      // không dội liên tục vào Gemini khi đang có sự cố kéo dài.
+      const updatedAtMs = (data.updatedAt as Timestamp | undefined)?.toMillis?.() ?? 0;
+      const backoffMinutes = Math.min(2 ** Math.max(attempts, 1), 60);
+      return Date.now() - updatedAtMs >= backoffMinutes * 60 * 1000;
+    });
+
+    if (candidates.length === 0) {
+      logger.info("[retryPendingAIAnalysis] Không có ticket nào cần thử lại.");
+      return;
+    }
+
+    logger.info(`[retryPendingAIAnalysis] Thử lại phân tích AI cho ${candidates.length} ticket.`);
+
+    for (const doc of candidates) {
+      const ticketId = doc.id;
+      try {
+        await runTicketAnalysis(ticketId, doc.data());
+      } catch (error) {
+        logger.error(`[retryPendingAIAnalysis] Vẫn lỗi khi thử lại ticket ${ticketId}:`, error);
+        await doc.ref.update({
+          updatedAt: FieldValue.serverTimestamp(),
+          lastAIError: error instanceof Error ? error.message : "Unknown error",
+          aiAttempts: FieldValue.increment(1),
+        }).catch((updateError) => {
+          logger.error(`[retryPendingAIAnalysis] Không thể ghi lastAIError cho ticket ${ticketId}:`, updateError);
+        });
+      }
     }
   }
 );
