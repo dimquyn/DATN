@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -18,10 +19,15 @@ import { FullScreenLoading } from "../../components/common/FullScreenLoading";
 import { getTicketById, updateTicketStatus } from "../../services/ticket.service";
 import { getAIResultById } from "../../services/ai-result.service";
 import { getNextTicketAction, getTicketStatusLabel } from "../../constants/ticket-status";
+import {
+  CONTACT_METHOD_LABELS,
+  CONTACT_METHOD_OPTIONS,
+  getContactMethodLabel,
+} from "../../constants/contact-method";
 import { formatTicketDate } from "../../utils/format-ticket-date";
 import { getDisplayTicketCode } from "../../utils/ticket-code";
 import { AI_PRIORITY_LABELS, AI_PRIORITY_STYLES } from "../../constants/ai-priority";
-import type { Ticket } from "../../types/ticket";
+import type { ContactMethod, Ticket } from "../../types/ticket";
 import type { AIResult } from "../../types/ai-result";
 
 export default function TicketDetailScreen() {
@@ -48,6 +54,11 @@ export default function TicketDetailScreen() {
   const [replyDraftInitialized, setReplyDraftInitialized] = useState<boolean>(false);
   const [confirmingReply, setConfirmingReply] = useState<boolean>(false);
   const [confirmReplyError, setConfirmReplyError] = useState<string | null>(null);
+
+  // Popup chọn hình thức liên hệ — hiện sau khi nhân viên đã chỉnh nội dung
+  // phản hồi và bấm "Xác nhận phản hồi", trước khi thực sự lưu xuống
+  // Firestore (mô phỏng bước "liên hệ khách" theo đúng phạm vi đồ án).
+  const [showContactMethodModal, setShowContactMethodModal] = useState<boolean>(false);
 
   // Cuộn ô "Phản hồi đề xuất" lên trên bàn phím khi được focus, giống app nhắn tin.
   // Đo qua scrollContainerRef (View bọc ngoài) vì ScrollView không có sẵn measureInWindow.
@@ -199,16 +210,26 @@ export default function TicketDetailScreen() {
     }
   };
 
-  const handleConfirmReply = async () => {
+  // Bấm "Xác nhận phản hồi": chỉ validate nội dung rồi mở popup chọn hình
+  // thức liên hệ — việc lưu xuống Firestore chỉ thực sự diễn ra sau khi nhân
+  // viên chọn xong 1 hình thức trong popup (handleSelectContactMethod).
+  const handleOpenContactMethodModal = () => {
     if (!user || !ticket || confirmingReply) return;
     if (ticket.status !== "in_progress") return;
 
-    const trimmed = replyDraft.trim();
-
-    if (trimmed.length === 0) {
+    if (replyDraft.trim().length === 0) {
       setConfirmReplyError("Vui lòng nhập nội dung phản hồi trước khi xác nhận.");
       return;
     }
+
+    setConfirmReplyError(null);
+    setShowContactMethodModal(true);
+  };
+
+  const handleSelectContactMethod = async (method: ContactMethod) => {
+    if (!user || !ticket || confirmingReply) return;
+
+    const trimmed = replyDraft.trim();
 
     setConfirmingReply(true);
     setConfirmReplyError(null);
@@ -216,15 +237,18 @@ export default function TicketDetailScreen() {
     try {
       await updateTicketStatus(ticket.id, "responded", {
         finalReply: trimmed,
+        contactMethod: method,
         history: { actorName: user.email ?? "Nhân viên", ticketCode: ticket.code },
       });
 
       setTicket((prev) =>
-        prev ? { ...prev, status: "responded", finalReply: trimmed } : prev
+        prev ? { ...prev, status: "responded", finalReply: trimmed, contactMethod: method } : prev
       );
       setReplyDraft(trimmed);
+      setShowContactMethodModal(false);
     } catch (err) {
       console.error("Lỗi khi xác nhận phản hồi:", err);
+      setShowContactMethodModal(false);
       setConfirmReplyError("Không thể xác nhận phản hồi. Vui lòng thử lại.");
     } finally {
       setConfirmingReply(false);
@@ -433,6 +457,10 @@ export default function TicketDetailScreen() {
                     {isRespondedPhase ? (
                       ticket.finalReply && ticket.finalReply.trim().length > 0 ? (
                         <>
+                          <Text style={styles.replyLabel}>HÌNH THỨC LIÊN HỆ</Text>
+                          <Text style={[styles.replyText, styles.contactMethodText]}>
+                            {getContactMethodLabel(ticket.contactMethod)}
+                          </Text>
                           <Text style={styles.replyLabel}>NỘI DUNG ĐÃ PHẢN HỒI</Text>
                           <Text style={styles.replyText}>{ticket.finalReply}</Text>
                         </>
@@ -464,7 +492,7 @@ export default function TicketDetailScreen() {
 
                         {ticket.status === "in_progress" ? (
                           <Pressable
-                            onPress={handleConfirmReply}
+                            onPress={handleOpenContactMethodModal}
                             disabled={confirmingReply || replyDraft.trim().length === 0}
                             style={[
                               styles.actionButton,
@@ -476,7 +504,7 @@ export default function TicketDetailScreen() {
                             {confirmingReply ? (
                               <ActivityIndicator size="small" color="#FFFFFF" />
                             ) : (
-                              <Text style={styles.actionButtonText}>Xác nhận đã phản hồi</Text>
+                              <Text style={styles.actionButtonText}>Xác nhận phản hồi</Text>
                             )}
                           </Pressable>
                         ) : (
@@ -561,6 +589,46 @@ export default function TicketDetailScreen() {
         </View>
         </KeyboardAvoidingView>
       )}
+
+      <Modal
+        visible={showContactMethodModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!confirmingReply) setShowContactMethodModal(false);
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Hình thức liên hệ khách hàng</Text>
+            <Text style={styles.modalSubtitle}>
+              Chọn hình thức bạn đã dùng để gửi phản hồi này cho khách hàng.
+            </Text>
+
+            {CONTACT_METHOD_OPTIONS.map((method) => (
+              <Pressable
+                key={method}
+                style={styles.modalOption}
+                disabled={confirmingReply}
+                onPress={() => handleSelectContactMethod(method)}
+              >
+                <Text style={styles.modalOptionText}>{CONTACT_METHOD_LABELS[method]}</Text>
+              </Pressable>
+            ))}
+
+            {confirmingReply ? (
+              <ActivityIndicator size="small" color="#1667B1" style={styles.modalLoading} />
+            ) : (
+              <Pressable
+                style={styles.modalCancelButton}
+                onPress={() => setShowContactMethodModal(false)}
+              >
+                <Text style={styles.modalCancelText}>Huỷ</Text>
+              </Pressable>
+            )}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -775,6 +843,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   replyText: { fontSize: 14, lineHeight: 20, color: "#111827" },
+  contactMethodText: { marginBottom: 14 },
   replyInput: {
     borderWidth: 1,
     borderColor: "#E5E7EB",
@@ -816,5 +885,59 @@ const styles = StyleSheet.create({
     color: "#B91C1C",
     marginBottom: 10,
     textAlign: "center",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(15, 23, 42, 0.45)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 24,
+  },
+  modalCard: {
+    width: "100%",
+    maxWidth: 360,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    padding: 20,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#111827",
+    marginBottom: 6,
+  },
+  modalSubtitle: {
+    fontSize: 13,
+    color: "#6B7280",
+    marginBottom: 16,
+    lineHeight: 18,
+  },
+  modalOption: {
+    height: 46,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 10,
+  },
+  modalOptionText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#1667B1",
+  },
+  modalLoading: {
+    marginTop: 4,
+  },
+  modalCancelButton: {
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 2,
+  },
+  modalCancelText: {
+    fontSize: 13,
+    color: "#6B7280",
+    fontWeight: "600",
   },
 });

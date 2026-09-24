@@ -60,14 +60,16 @@ service cloud.firestore {
             && after.assignedTo == request.auth.uid
             && (!('assignedToName' in after) || after.assignedToName is string)
           )
-          // "Xác nhận đã phản hồi": in_progress -> responded, kèm finalReply.
+          // "Xác nhận đã phản hồi": in_progress -> responded, kèm finalReply
+          // và hình thức liên hệ đã dùng (mô phỏng, không gửi thật).
           || (
-            changedKeys.hasOnly(['status', 'finalReply', 'updatedAt'])
+            changedKeys.hasOnly(['status', 'finalReply', 'contactMethod', 'updatedAt'])
             && before.status == 'in_progress'
             && after.status == 'responded'
             && after.finalReply is string
             && after.finalReply.size() > 0
             && after.finalReply.size() <= 5000
+            && after.contactMethod in ['phone', 'message', 'email']
           )
           // "Đóng khiếu nại": responded -> closed, không đổi field nào khác.
           || (
