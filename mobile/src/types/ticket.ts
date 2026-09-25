@@ -1,11 +1,6 @@
 import type { Timestamp } from "firebase/firestore";
 
-export type TicketChannel = "Website" | "Facebook" | "Zalo";
-
-// Hình thức nhân viên đã liên hệ để gửi phản hồi cho khách — mô phỏng theo
-// đúng phạm vi đồ án (không gửi thật qua điện thoại/tin nhắn/email), chỉ ghi
-// nhận lại lựa chọn của nhân viên vào cơ sở dữ liệu.
-export type ContactMethod = "phone" | "message" | "email";
+export type TicketChannel = "Website" | "Facebook" | "Zalo" | "Email";
 
 export type TicketStatus =
   | "pending"
@@ -30,7 +25,6 @@ export interface Ticket {
   aiResultId: string | null;
   priority: "High Priority" | "Medium" | "Low" | null;
   finalReply: string | null;
-  contactMethod: ContactMethod | null;
   rating: number | null;
   ratingComment: string | null;
   ratedAt: Timestamp | null;

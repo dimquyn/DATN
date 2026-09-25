@@ -13,7 +13,7 @@ import {
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { addTicketHistoryEntry } from "./ticket-history.service";
-import type { ContactMethod, Ticket, TicketStatus } from "../types/ticket";
+import type { Ticket, TicketStatus } from "../types/ticket";
 
 const TICKETS_COLLECTION = "tickets";
 
@@ -32,7 +32,6 @@ function mapTicketData(id: string, data: DocumentData): Ticket {
     aiResultId: data.aiResultId ?? null,
     priority: data.priority ?? null,
     finalReply: data.finalReply ?? null,
-    contactMethod: data.contactMethod ?? null,
     rating: data.rating ?? null,
     ratingComment: data.ratingComment ?? null,
     ratedAt: data.ratedAt ?? null,
@@ -96,11 +95,6 @@ export interface UpdateTicketStatusOptions {
    */
   finalReply?: string;
   /**
-   * Hình thức nhân viên đã liên hệ để gửi phản hồi (điện thoại/tin
-   * nhắn/email) — chỉ truyền kèm finalReply khi xác nhận đã phản hồi.
-   */
-  contactMethod?: ContactMethod;
-  /**
    * Thông tin để ghi 1 dòng lịch sử xử lý (màn "Lịch sử xử lý") ứng với
    * bước chuyển trạng thái này. Không truyền thì không ghi lịch sử.
    */
@@ -139,10 +133,6 @@ export async function updateTicketStatus(
 
   if (options?.finalReply !== undefined) {
     updates.finalReply = options.finalReply;
-  }
-
-  if (options?.contactMethod !== undefined) {
-    updates.contactMethod = options.contactMethod;
   }
 
   await updateDoc(ticketRef, updates);
