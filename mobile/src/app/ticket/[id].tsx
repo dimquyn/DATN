@@ -15,7 +15,8 @@ import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../contexts/AuthContext";
 import { FullScreenLoading } from "../../components/common/FullScreenLoading";
-import { getTicketById, updateTicketStatus } from "../../services/ticket.service";
+import { getTicketById, reassignTicket, updateTicketStatus } from "../../services/ticket.service";
+import { subscribeToStaffList } from "../../services/staff.service";
 import { getAIResultById } from "../../services/ai-result.service";
 import { getNextTicketAction, getTicketStatusLabel } from "../../constants/ticket-status";
 import { formatTicketDate } from "../../utils/format-ticket-date";
@@ -23,9 +24,10 @@ import { getDisplayTicketCode } from "../../utils/ticket-code";
 import { AI_PRIORITY_LABELS, AI_PRIORITY_STYLES } from "../../constants/ai-priority";
 import type { Ticket } from "../../types/ticket";
 import type { AIResult } from "../../types/ai-result";
+import type { StaffProfile } from "../../types/staff";
 
 export default function TicketDetailScreen() {
-  const { user, initializing } = useAuth();
+  const { user, initializing, isAdmin } = useAuth();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
@@ -48,6 +50,13 @@ export default function TicketDetailScreen() {
   const [replyDraftInitialized, setReplyDraftInitialized] = useState<boolean>(false);
   const [confirmingReply, setConfirmingReply] = useState<boolean>(false);
   const [confirmReplyError, setConfirmReplyError] = useState<string | null>(null);
+
+  // Chuyển người xử lý (chỉ admin, ticket đang in_progress)
+  const [staffList, setStaffList] = useState<StaffProfile[]>([]);
+  const [showReassign, setShowReassign] = useState<boolean>(false);
+  const [reassignTarget, setReassignTarget] = useState<StaffProfile | null>(null);
+  const [reassigning, setReassigning] = useState<boolean>(false);
+  const [reassignError, setReassignError] = useState<string | null>(null);
 
   // Cuộn ô "Phản hồi đề xuất" lên trên bàn phím khi được focus, giống app nhắn tin.
   // Đo qua scrollContainerRef (View bọc ngoài) vì ScrollView không có sẵn measureInWindow.
@@ -133,6 +142,19 @@ export default function TicketDetailScreen() {
       cancelled = true;
     };
   }, [user, id]);
+
+  // Chỉ admin đọc được danh sách nhân viên (firestore.rules) — dùng để chọn
+  // người nhận khi chuyển ticket.
+  useEffect(() => {
+    if (!isAdmin) return;
+
+    const unsubscribe = subscribeToStaffList(
+      (nextStaff) => setStaffList(nextStaff),
+      (err) => console.error("Lỗi khi tải danh sách nhân viên:", err)
+    );
+
+    return () => unsubscribe();
+  }, [isAdmin]);
 
   // Khởi tạo nội dung ô nhập phản hồi từ aiResult.reply — chỉ 1 lần,
   // để không ghi đè nội dung nhân viên đang sửa dở.
@@ -231,6 +253,38 @@ export default function TicketDetailScreen() {
       setConfirmReplyError("Không thể xác nhận phản hồi. Vui lòng thử lại.");
     } finally {
       setConfirmingReply(false);
+    }
+  };
+
+  const handleReassign = async () => {
+    if (!user || !ticket || !reassignTarget || reassigning) return;
+
+    // Dùng email giống bước "Nhận xử lý" (assignedToName = user.email) để
+    // cột "Người xử lý" và lịch sử hiển thị thống nhất.
+    const targetName = reassignTarget.email;
+
+    setReassigning(true);
+    setReassignError(null);
+
+    try {
+      await reassignTicket(ticket.id, {
+        assignedTo: reassignTarget.uid,
+        assignedToName: targetName,
+        history: { actorName: user.email ?? "Quản trị viên", ticketCode: ticket.code },
+      });
+
+      setTicket((prev) =>
+        prev ? { ...prev, assignedTo: reassignTarget.uid, assignedToName: targetName } : prev
+      );
+      setShowReassign(false);
+      setReassignTarget(null);
+    } catch (err) {
+      console.error("Lỗi khi chuyển người xử lý:", err);
+      setReassignError("Không thể chuyển người xử lý. Vui lòng thử lại.");
+      const latest = await getTicketById(ticket.id).catch(() => null);
+      if (latest) setTicket(latest);
+    } finally {
+      setReassigning(false);
     }
   };
 
@@ -527,6 +581,79 @@ export default function TicketDetailScreen() {
               </View>
             )}
 
+            {/* Chuyển người xử lý — chỉ admin, khi ticket đang được xử lý */}
+            {isAdmin && ticket.status === "in_progress" && (
+              <View style={styles.card}>
+                <Text style={styles.sectionTitle}>QUẢN TRỊ: CHUYỂN NGƯỜI XỬ LÝ</Text>
+
+                {!showReassign ? (
+                  <Pressable
+                    onPress={() => {
+                      setShowReassign(true);
+                      setReassignError(null);
+                    }}
+                    style={styles.secondaryButton}
+                  >
+                    <Text style={styles.secondaryButtonText}>Chuyển cho nhân viên khác</Text>
+                  </Pressable>
+                ) : (
+                  <>
+                    {staffList
+                      .filter((staff) => staff.active && staff.uid !== ticket.assignedTo)
+                      .map((staff) => {
+                        const selected = reassignTarget?.uid === staff.uid;
+                        return (
+                          <Pressable
+                            key={staff.uid}
+                            onPress={() => setReassignTarget(staff)}
+                            disabled={reassigning}
+                            style={[styles.staffOption, selected ? styles.staffOptionSelected : null]}
+                          >
+                            <Text style={styles.staffOptionName}>
+                              {staff.displayName || staff.email}
+                              {staff.role === "admin" ? " (Admin)" : ""}
+                            </Text>
+                            <Text style={styles.staffOptionEmail}>{staff.email}</Text>
+                          </Pressable>
+                        );
+                      })}
+
+                    {staffList.filter((s) => s.active && s.uid !== ticket.assignedTo).length === 0 && (
+                      <Text style={styles.pendingText}>Không có nhân viên nào khác đang hoạt động.</Text>
+                    )}
+
+                    {reassignError && <Text style={styles.actionErrorText}>{reassignError}</Text>}
+
+                    <Pressable
+                      onPress={handleReassign}
+                      disabled={!reassignTarget || reassigning}
+                      style={[
+                        styles.actionButton,
+                        styles.reassignConfirmButton,
+                        !reassignTarget || reassigning ? styles.actionButtonDisabled : null,
+                      ]}
+                    >
+                      {reassigning ? (
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                      ) : (
+                        <Text style={styles.actionButtonText}>Xác nhận chuyển</Text>
+                      )}
+                    </Pressable>
+                    <Pressable
+                      onPress={() => {
+                        setShowReassign(false);
+                        setReassignTarget(null);
+                      }}
+                      disabled={reassigning}
+                      style={styles.cancelLink}
+                    >
+                      <Text style={styles.cancelLinkText}>Hủy</Text>
+                    </Pressable>
+                  </>
+                )}
+              </View>
+            )}
+
             {/* Hành động Nhận xử lý / Đóng khiếu nại (Sprint 4) */}
             {(() => {
               const action = getNextTicketAction(ticket.status, aiFailed);
@@ -538,7 +665,9 @@ export default function TicketDetailScreen() {
               const isClaimAction = action.nextStatus === "in_progress";
               // Nhận xử lý: bị chặn nếu người khác đã nhận trước.
               // Đóng khiếu nại: chỉ người đang xử lý ticket mới được đóng.
-              const isTakenByOther = isClaimAction ? isAssignedToOther : !isAssignedToMe;
+              const isTakenByOther = isClaimAction
+                ? isAssignedToOther
+                : !isAssignedToMe && !isAdmin;
 
               if (isTakenByOther) {
                 return (
@@ -828,6 +957,29 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   actionButtonText: { color: "#FFFFFF", fontSize: 14, fontWeight: "700" },
+  secondaryButton: {
+    height: 44,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#1667B1",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  secondaryButtonText: { color: "#1667B1", fontSize: 14, fontWeight: "700" },
+  staffOption: {
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 8,
+  },
+  staffOptionSelected: { borderColor: "#1667B1", backgroundColor: "#EFF6FF" },
+  staffOptionName: { fontSize: 14, fontWeight: "600", color: "#111827" },
+  staffOptionEmail: { marginTop: 2, fontSize: 12, color: "#6B7280" },
+  reassignConfirmButton: { marginTop: 4 },
+  cancelLink: { alignItems: "center", paddingVertical: 10 },
+  cancelLinkText: { fontSize: 13, fontWeight: "600", color: "#6B7280" },
   actionErrorText: {
     fontSize: 13,
     color: "#B91C1C",

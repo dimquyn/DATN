@@ -19,7 +19,7 @@ import type { Ticket } from "../../types/ticket";
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { user, logout } = useAuth();
+  const { user, logout, isAdmin } = useAuth();
 
   const [tickets, setTickets] = useState<Ticket[]>([]);
 
@@ -112,8 +112,18 @@ export default function ProfileScreen() {
         </View>
         <Text style={styles.name}>{displayName}</Text>
         <Text style={styles.email}>{user.email}</Text>
+        <Text style={[styles.roleBadge, isAdmin ? styles.roleBadgeAdmin : null]}>
+          {isAdmin ? "Quản trị viên" : "Nhân viên CSKH"}
+        </Text>
         <Text style={styles.uid}>ID: {user.uid}</Text>
       </View>
+
+      {isAdmin && (
+        <Pressable style={styles.adminButton} onPress={() => router.push("/staff")}>
+          <Text style={styles.adminButtonText}>Quản lý nhân viên</Text>
+          <Text style={styles.adminButtonHint}>Thêm tài khoản, cấp quyền, khóa tài khoản</Text>
+        </Pressable>
+      )}
 
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>Thống kê cá nhân</Text>
@@ -248,6 +258,28 @@ const styles = StyleSheet.create({
   name: { fontSize: 17, fontWeight: "700", color: "#111827" },
   email: { marginTop: 4, fontSize: 13, color: "#6B7280" },
   uid: { marginTop: 4, fontSize: 11, color: "#9CA3AF" },
+  roleBadge: {
+    marginTop: 8,
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#1D4ED8",
+    backgroundColor: "#EFF6FF",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    overflow: "hidden",
+  },
+  roleBadgeAdmin: { color: "#6D28D9", backgroundColor: "#EDE9FE" },
+  adminButton: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#C4B5FD",
+    padding: 16,
+    marginBottom: 16,
+  },
+  adminButtonText: { fontSize: 15, fontWeight: "700", color: "#6D28D9" },
+  adminButtonHint: { marginTop: 4, fontSize: 12, color: "#6B7280" },
   sectionTitle: { alignSelf: "flex-start", fontSize: 14, fontWeight: "700", color: "#111827", marginBottom: 14 },
   statRow: { flexDirection: "row", width: "100%", gap: 12 },
   statItem: {

@@ -6,6 +6,7 @@ import {
   connectFirestoreEmulator,
   initializeFirestore,
 } from "firebase/firestore";
+import { connectFunctionsEmulator, getFunctions } from "firebase/functions";
 
 const firebaseConfig = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
@@ -35,6 +36,10 @@ export const db = initializeFirestore(
   app,
   Platform.OS === "web" ? {} : { experimentalForceLongPolling: true }
 );
+
+// Cùng region với các Cloud Function trong functions/src/index.ts
+// (createStaffAccount, updateStaffAccount) — sai region sẽ luôn bị 404.
+export const functions = getFunctions(app, "asia-southeast1");
 
 /*
  * Xác định host để kết nối Firebase Emulator:
@@ -92,6 +97,7 @@ if (useEmulator && !globalThis.__FIREBASE_EMULATORS_CONNECTED__) {
 
   connectAuthEmulator(auth, `http://${emulatorHost}:9099`);
   connectFirestoreEmulator(db, emulatorHost, 8080);
+  connectFunctionsEmulator(functions, emulatorHost, 5001);
 
   globalThis.__FIREBASE_EMULATORS_CONNECTED__ = true;
 }

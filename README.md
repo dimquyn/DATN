@@ -104,6 +104,17 @@ npm install
 npx expo start
 ```
 
+### Tài khoản & phân quyền nhân viên
+Chỉ tài khoản có hồ sơ `staff/{uid}` (role `admin` hoặc `staff`, `active: true`) mới vào được app.
+Sau khi Emulator đã chạy, tạo admin đầu tiên và cấp quyền cho các tài khoản đang có:
+```bash
+cd functions
+npm run seed:staff
+# hoặc tự chọn tài khoản admin:
+npm run seed:staff -- --email admin@cskh.vn --password admin123 --name "Quản trị viên"
+```
+Đăng nhập app bằng tài khoản admin → tab **Cá nhân** → **Quản lý nhân viên** để thêm, cấp quyền admin hoặc khóa tài khoản nhân viên.
+
 ---
 ## Tài liệu
 ### Thiết kế giao diện

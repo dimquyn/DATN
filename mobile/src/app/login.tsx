@@ -57,7 +57,7 @@ function validatePassword(password: string): string | undefined {
 }
 
 export default function LoginScreen() {
-  const { user, initializing, login } = useAuth();
+  const { user, initializing, login, accessError, clearAccessError } = useAuth();
 
   const [email, setEmail] = useState<string>("");
   const [password, setPassword] = useState<string>("");
@@ -81,6 +81,10 @@ export default function LoginScreen() {
       setFormError(null);
     }
 
+    if (accessError) {
+      clearAccessError();
+    }
+
     if (fieldErrors.email) {
       setFieldErrors((prev) => ({ ...prev, email: validateEmail(value) }));
     }
@@ -91,6 +95,10 @@ export default function LoginScreen() {
 
     if (formError) {
       setFormError(null);
+    }
+
+    if (accessError) {
+      clearAccessError();
     }
 
     if (fieldErrors.password) {
@@ -140,9 +148,11 @@ export default function LoginScreen() {
           Đăng nhập để tiếp nhận và xử lý khiếu nại khách hàng.
         </Text>
 
-        {formError !== null && (
+        {/* accessError: đăng nhập đúng mật khẩu nhưng tài khoản không có quyền
+            (không có hồ sơ staff) hoặc đã bị admin khóa — AuthContext tự đăng xuất. */}
+        {(formError ?? accessError) !== null && (
           <View style={styles.formErrorBox}>
-            <Text style={styles.formErrorText}>{formError}</Text>
+            <Text style={styles.formErrorText}>{formError ?? accessError}</Text>
           </View>
         )}
 

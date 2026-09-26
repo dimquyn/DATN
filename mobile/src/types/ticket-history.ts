@@ -4,6 +4,7 @@ export type TicketHistoryAction =
   | "created"
   | "ai_analyzed"
   | "claimed"
+  | "reassigned"
   | "responded"
   | "closed"
   | "rated";

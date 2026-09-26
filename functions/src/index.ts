@@ -1,10 +1,11 @@
-import { onCall, HttpsError } from "firebase-functions/v2/https";
+import { onCall, HttpsError, type CallableRequest } from "firebase-functions/v2/https";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { defineSecret } from "firebase-functions/params";
 import { logger } from "firebase-functions/v2";
 import { GoogleGenAI, Type } from "@google/genai";
 import { initializeApp, getApps } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import { getAuth } from "firebase-admin/auth";
 
 if (getApps().length === 0) {
   initializeApp();
@@ -332,6 +333,187 @@ export const submitTicketRating = onCall(
         createdAt: FieldValue.serverTimestamp(),
       });
     });
+
+    return { success: true };
+  }
+);
+
+/**
+ * ============================================================
+ * Phân quyền nhân viên: collection "staff/{uid}"
+ * ============================================================
+ * Mỗi tài khoản nhân viên có 1 document staff/{uid} gồm: email,
+ * displayName, role ("admin" | "staff"), active (true/false).
+ * firestore.rules chỉ coi là nhân viên hợp lệ những tài khoản có
+ * document này và active == true — tài khoản tự đăng ký (không có
+ * document staff) không đọc được dữ liệu nào.
+ * Client KHÔNG được ghi collection "staff" (rules chặn), chỉ 2 Callable
+ * Function dưới đây (Admin SDK) được tạo/sửa, và chỉ khi người gọi là admin.
+ * ============================================================
+ */
+const STAFF_ROLES = ["admin", "staff"] as const;
+type StaffRole = (typeof STAFF_ROLES)[number];
+
+const STAFF_EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function isStaffRole(value: unknown): value is StaffRole {
+  return typeof value === "string" && (STAFF_ROLES as readonly string[]).includes(value);
+}
+
+/** Chặn mọi request không phải từ admin đang hoạt động, trả về uid của admin. */
+async function assertAdmin(request: CallableRequest): Promise<string> {
+  const uid = request.auth?.uid;
+
+  if (!uid) {
+    throw new HttpsError("unauthenticated", "Vui lòng đăng nhập.");
+  }
+
+  const staffSnap = await db.collection("staff").doc(uid).get();
+  const staff = staffSnap.data();
+
+  if (!staffSnap.exists || staff?.active !== true || staff?.role !== "admin") {
+    throw new HttpsError("permission-denied", "Chỉ quản trị viên mới được thực hiện thao tác này.");
+  }
+
+  return uid;
+}
+
+/**
+ * ============================================================
+ * Cloud Function: createStaffAccount
+ * ============================================================
+ * Admin tạo tài khoản đăng nhập (Firebase Auth) cho nhân viên mới và
+ * document staff/{uid} tương ứng. Phải qua Admin SDK vì client SDK chỉ
+ * tự đăng ký được cho chính mình, không tạo được tài khoản cho người khác.
+ * ============================================================
+ */
+export const createStaffAccount = onCall(
+  { region: "asia-southeast1" },
+  async (request) => {
+    const adminUid = await assertAdmin(request);
+
+    const { email, password, displayName, role } = (request.data ?? {}) as {
+      email?: unknown;
+      password?: unknown;
+      displayName?: unknown;
+      role?: unknown;
+    };
+
+    const normalizedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
+    const normalizedName = typeof displayName === "string" ? displayName.trim() : "";
+
+    if (!STAFF_EMAIL_REGEX.test(normalizedEmail) || normalizedEmail.length > 100) {
+      throw new HttpsError("invalid-argument", "Email không đúng định dạng.");
+    }
+
+    if (typeof password !== "string" || password.length < 6 || password.length > 100) {
+      throw new HttpsError("invalid-argument", "Mật khẩu phải có từ 6 đến 100 ký tự.");
+    }
+
+    if (normalizedName.length === 0 || normalizedName.length > 100) {
+      throw new HttpsError("invalid-argument", "Họ tên phải có từ 1 đến 100 ký tự.");
+    }
+
+    if (!isStaffRole(role)) {
+      throw new HttpsError("invalid-argument", "Vai trò không hợp lệ.");
+    }
+
+    let newUid: string;
+    try {
+      const userRecord = await getAuth().createUser({
+        email: normalizedEmail,
+        password,
+        displayName: normalizedName,
+      });
+      newUid = userRecord.uid;
+    } catch (error) {
+      const code = (error as { code?: string }).code;
+      if (code === "auth/email-already-exists") {
+        throw new HttpsError("already-exists", "Email này đã được dùng cho 1 tài khoản khác.");
+      }
+      logger.error("[createStaffAccount] Lỗi khi tạo tài khoản Auth:", error);
+      throw new HttpsError("internal", "Không thể tạo tài khoản. Vui lòng thử lại.");
+    }
+
+    await db.collection("staff").doc(newUid).set({
+      email: normalizedEmail,
+      displayName: normalizedName,
+      role,
+      active: true,
+      createdAt: FieldValue.serverTimestamp(),
+      createdBy: adminUid,
+    });
+
+    logger.info(`[createStaffAccount] Admin ${adminUid} đã tạo tài khoản ${newUid} (${role})`);
+
+    return { uid: newUid };
+  }
+);
+
+/**
+ * ============================================================
+ * Cloud Function: updateStaffAccount
+ * ============================================================
+ * Admin đổi vai trò (admin/staff) hoặc khóa/mở khóa tài khoản nhân viên.
+ * Khóa tài khoản = active false + vô hiệu hóa tài khoản Auth + thu hồi
+ * phiên đăng nhập hiện tại, nên nhân viên bị khóa bị đăng xuất ngay.
+ * Không cho admin tự sửa chính mình — tránh trường hợp admin cuối cùng tự
+ * khóa hoặc tự hạ quyền khiến hệ thống không còn ai quản trị.
+ * ============================================================
+ */
+export const updateStaffAccount = onCall(
+  { region: "asia-southeast1" },
+  async (request) => {
+    const adminUid = await assertAdmin(request);
+
+    const { uid, role, active } = (request.data ?? {}) as {
+      uid?: unknown;
+      role?: unknown;
+      active?: unknown;
+    };
+
+    if (typeof uid !== "string" || !uid) {
+      throw new HttpsError("invalid-argument", "Thiếu tài khoản cần cập nhật.");
+    }
+
+    if (uid === adminUid) {
+      throw new HttpsError("failed-precondition", "Không thể tự thay đổi quyền hoặc tự khóa tài khoản của chính mình.");
+    }
+
+    if (role !== undefined && !isStaffRole(role)) {
+      throw new HttpsError("invalid-argument", "Vai trò không hợp lệ.");
+    }
+
+    if (active !== undefined && typeof active !== "boolean") {
+      throw new HttpsError("invalid-argument", "Trạng thái tài khoản không hợp lệ.");
+    }
+
+    if (role === undefined && active === undefined) {
+      throw new HttpsError("invalid-argument", "Không có thay đổi nào.");
+    }
+
+    const staffRef = db.collection("staff").doc(uid);
+    const staffSnap = await staffRef.get();
+
+    if (!staffSnap.exists) {
+      throw new HttpsError("not-found", "Không tìm thấy tài khoản nhân viên.");
+    }
+
+    await staffRef.update({
+      ...(role !== undefined ? { role } : {}),
+      ...(active !== undefined ? { active } : {}),
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedBy: adminUid,
+    });
+
+    if (active !== undefined) {
+      await getAuth().updateUser(uid, { disabled: !active });
+      if (!active) {
+        await getAuth().revokeRefreshTokens(uid);
+      }
+    }
+
+    logger.info(`[updateStaffAccount] Admin ${adminUid} cập nhật ${uid}: role=${String(role)}, active=${String(active)}`);
 
     return { success: true };
   }

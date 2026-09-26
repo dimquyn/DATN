@@ -3,11 +3,28 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Nhân viên CSKH đăng nhập qua mobile app (Firebase Auth). Không phân
-    // quyền theo vai trò — mọi tài khoản đã đăng nhập đều được xem là nhân
-    // viên hợp lệ (đủ cho phạm vi đồ án hiện tại).
+    // Nhân viên CSKH đăng nhập qua mobile app (Firebase Auth). Chỉ tài khoản
+    // có document staff/{uid} với active == true mới là nhân viên hợp lệ —
+    // đăng nhập được (vd tự đăng ký qua Firebase Auth) nhưng không có trong
+    // "staff" thì vẫn không đọc/ghi được gì. Document staff chỉ do admin tạo
+    // qua Cloud Function createStaffAccount (Admin SDK).
+    function staffPath(uid) {
+      return /databases/$(database)/documents/staff/$(uid);
+    }
+
+    function isActiveStaff(uid) {
+      return exists(staffPath(uid)) && get(staffPath(uid)).data.active == true;
+    }
+
     function isStaff() {
-      return request.auth != null;
+      return request.auth != null && isActiveStaff(request.auth.uid);
+    }
+
+    // Quản trị viên: nhân viên hợp lệ có role == "admin". Ngoài quyền của
+    // nhân viên, admin được chuyển ticket sang nhân viên khác, đóng ticket
+    // của bất kỳ ai và quản lý tài khoản nhân viên.
+    function isAdmin() {
+      return isStaff() && get(staffPath(request.auth.uid)).data.role == 'admin';
     }
 
     // Khách gửi khiếu nại từ website (KHÔNG đăng nhập) chỉ được tạo ticket
@@ -92,12 +109,24 @@ service cloud.firestore {
             && after.finalReply.size() <= 5000
           )
           // "Đóng khiếu nại": responded -> closed, không đổi field nào khác.
-          // Cũng chỉ nhân viên đang xử lý ticket mới được đóng.
+          // Chỉ nhân viên đang xử lý ticket (hoặc admin) mới được đóng.
           || (
             changedKeys.hasOnly(['status', 'updatedAt'])
-            && before.assignedTo == request.auth.uid
+            && (before.assignedTo == request.auth.uid || isAdmin())
             && before.status == 'responded'
             && after.status == 'closed'
+          )
+          // "Chuyển người xử lý" (chỉ admin): ticket đang in_progress được
+          // giao lại cho 1 nhân viên khác đang hoạt động — dùng khi nhân viên
+          // cũ nghỉ, bị khóa tài khoản hoặc quá tải. Không đổi trạng thái.
+          || (
+            isAdmin()
+            && changedKeys.hasOnly(['assignedTo', 'assignedToName', 'updatedAt'])
+            && before.status == 'in_progress'
+            && after.assignedTo is string
+            && after.assignedTo != before.assignedTo
+            && isActiveStaff(after.assignedTo)
+            && (!('assignedToName' in after) || after.assignedToName is string)
           )
         );
     }
@@ -147,6 +176,17 @@ service cloud.firestore {
       allow update: if request.resource.data.keys().hasOnly(['count'])
         && request.resource.data.count == resource.data.count + 1;
       allow delete: if false;
+    }
+
+    // Hồ sơ phân quyền nhân viên. Mỗi người đọc được hồ sơ của chính mình
+    // (app cần biết vai trò/tài khoản có bị khóa không, kể cả khi đã bị
+    // khóa); admin đọc được toàn bộ để quản lý và chọn người khi chuyển
+    // ticket. Client không được ghi — chỉ Cloud Functions createStaffAccount
+    // / updateStaffAccount (Admin SDK) ghi sau khi kiểm tra người gọi là admin.
+    match /staff/{uid} {
+      allow get: if (request.auth != null && request.auth.uid == uid) || isAdmin();
+      allow list: if isAdmin();
+      allow write: if false;
     }
 
     // Kết quả phân tích AI chỉ do Cloud Function analyzeTicketWithAI (Admin

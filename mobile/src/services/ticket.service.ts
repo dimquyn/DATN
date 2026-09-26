@@ -146,3 +146,35 @@ export async function updateTicketStatus(
     });
   }
 }
+export interface ReassignTicketOptions {
+  /** UID nhân viên nhận ticket. */
+  assignedTo: string;
+  /** Email/tên nhân viên nhận ticket, để hiển thị. */
+  assignedToName: string;
+  history: {
+    actorName: string;
+    ticketCode?: string | null;
+  };
+}
+
+/**
+ * Chuyển ticket đang xử lý (in_progress) sang nhân viên khác — chỉ admin
+ * (firestore.rules kiểm tra vai trò và nhân viên nhận phải đang hoạt động).
+ * Không đổi trạng thái, chỉ đổi người xử lý, kèm 1 dòng lịch sử "reassigned".
+ */
+export async function reassignTicket(
+  ticketId: string,
+  options: ReassignTicketOptions
+): Promise<void> {
+  await updateDoc(doc(db, TICKETS_COLLECTION, ticketId), {
+    assignedTo: options.assignedTo,
+    assignedToName: options.assignedToName,
+    updatedAt: serverTimestamp(),
+  });
+
+  await addTicketHistoryEntry(ticketId, {
+    action: "reassigned",
+    actorName: `${options.history.actorName} → ${options.assignedToName}`,
+    ticketCode: options.history.ticketCode,
+  });
+}
