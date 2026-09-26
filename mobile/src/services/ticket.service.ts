@@ -6,13 +6,13 @@ import {
   orderBy,
   query,
   serverTimestamp,
-  updateDoc,
+  writeBatch,
   type DocumentData,
   type FirestoreError,
   type Unsubscribe,
 } from "firebase/firestore";
 import { db } from "../firebase";
-import { addTicketHistoryEntry } from "./ticket-history.service";
+import { addTicketHistoryEntryToBatch } from "./ticket-history.service";
 import type { Ticket, TicketStatus } from "../types/ticket";
 
 const TICKETS_COLLECTION = "tickets";
@@ -69,6 +69,23 @@ export function subscribeToTickets(
 }
 
 /**
+ * Lắng nghe realtime 1 ticket — màn Ticket Detail tự cập nhật khi AI phân
+ * tích xong, khi nhân viên khác nhận xử lý hoặc khi admin chuyển ticket.
+ * onData nhận null nếu ticket không tồn tại.
+ */
+export function subscribeToTicket(
+  ticketId: string,
+  onData: (ticket: Ticket | null) => void,
+  onError: (error: FirestoreError) => void
+): Unsubscribe {
+  return onSnapshot(
+    doc(db, TICKETS_COLLECTION, ticketId),
+    (snapshot) => onData(snapshot.exists() ? mapTicketData(snapshot.id, snapshot.data()) : null),
+    onError
+  );
+}
+
+/**
  * Đọc 1 ticket theo document ID — dùng cho màn Ticket Detail (Sprint 3).
  * Trả null nếu ticket không tồn tại. Không chứa UI logic.
  */
@@ -100,6 +117,7 @@ export interface UpdateTicketStatusOptions {
    */
   history?: {
     actorName: string;
+    actorUid: string;
     ticketCode?: string | null;
   };
 }
@@ -135,16 +153,21 @@ export async function updateTicketStatus(
     updates.finalReply = options.finalReply;
   }
 
-  await updateDoc(ticketRef, updates);
+  // Cập nhật ticket + ghi lịch sử trong cùng 1 batch (atomic).
+  const batch = writeBatch(db);
+  batch.update(ticketRef, updates);
 
   const historyAction = STATUS_TO_HISTORY_ACTION[status];
   if (options?.history && historyAction) {
-    await addTicketHistoryEntry(ticketId, {
+    addTicketHistoryEntryToBatch(batch, ticketId, {
       action: historyAction,
       actorName: options.history.actorName,
+      actorUid: options.history.actorUid,
       ticketCode: options.history.ticketCode,
     });
   }
+
+  await batch.commit();
 }
 export interface ReassignTicketOptions {
   /** UID nhân viên nhận ticket. */
@@ -153,6 +176,7 @@ export interface ReassignTicketOptions {
   assignedToName: string;
   history: {
     actorName: string;
+    actorUid: string;
     ticketCode?: string | null;
   };
 }
@@ -166,15 +190,17 @@ export async function reassignTicket(
   ticketId: string,
   options: ReassignTicketOptions
 ): Promise<void> {
-  await updateDoc(doc(db, TICKETS_COLLECTION, ticketId), {
+  const batch = writeBatch(db);
+  batch.update(doc(db, TICKETS_COLLECTION, ticketId), {
     assignedTo: options.assignedTo,
     assignedToName: options.assignedToName,
     updatedAt: serverTimestamp(),
   });
-
-  await addTicketHistoryEntry(ticketId, {
+  addTicketHistoryEntryToBatch(batch, ticketId, {
     action: "reassigned",
     actorName: `${options.history.actorName} → ${options.assignedToName}`,
+    actorUid: options.history.actorUid,
     ticketCode: options.history.ticketCode,
   });
+  await batch.commit();
 }

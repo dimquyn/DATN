@@ -1,6 +1,6 @@
 import {
-  addDoc,
   collection,
+  doc,
   onSnapshot,
   orderBy,
   query,
@@ -8,6 +8,7 @@ import {
   type DocumentData,
   type FirestoreError,
   type Unsubscribe,
+  type WriteBatch,
 } from "firebase/firestore";
 import { db } from "../firebase";
 import type { TicketHistoryEntry } from "../types/ticket-history";
@@ -26,19 +27,27 @@ function mapHistoryData(id: string, data: DocumentData): TicketHistoryEntry {
 export interface AddTicketHistoryEntryOptions {
   ticketCode?: string | null;
   actorName: string;
+  /** UID người thực hiện — firestore.rules yêu cầu trùng với tài khoản đang đăng nhập. */
+  actorUid: string;
   action: string;
 }
 
-/** Ghi 1 dòng lịch sử cho ticket — dùng mỗi khi trạng thái ticket thay đổi từ app. */
-export async function addTicketHistoryEntry(
+/**
+ * Thêm 1 dòng lịch sử vào CÙNG batch với thao tác cập nhật ticket — rules
+ * chỉ chấp nhận dòng lịch sử của nhân viên khi ticket được cập nhật trong
+ * cùng request, nên 2 thao tác luôn thành công hoặc thất bại cùng nhau.
+ */
+export function addTicketHistoryEntryToBatch(
+  batch: WriteBatch,
   ticketId: string,
   options: AddTicketHistoryEntryOptions
-): Promise<void> {
-  await addDoc(collection(db, "tickets", ticketId, "history"), {
+): void {
+  batch.set(doc(collection(db, "tickets", ticketId, "history")), {
     ticketId,
     ticketCode: options.ticketCode ?? null,
     action: options.action,
     actorName: options.actorName,
+    actorUid: options.actorUid,
     createdAt: serverTimestamp(),
   });
 }

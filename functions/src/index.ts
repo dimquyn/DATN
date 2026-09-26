@@ -1,11 +1,14 @@
 import { onCall, HttpsError, type CallableRequest } from "firebase-functions/v2/https";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import { onSchedule } from "firebase-functions/v2/scheduler";
 import { defineSecret } from "firebase-functions/params";
 import { logger } from "firebase-functions/v2";
 import { GoogleGenAI, Type } from "@google/genai";
 import { initializeApp, getApps } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
+import { isLookupLocked, recordLookupFailure, reserveAIQuota } from "./limits";
+import { anonymizeClosedTickets, RETENTION_DAYS } from "./retention";
 
 if (getApps().length === 0) {
   initializeApp();
@@ -129,6 +132,14 @@ export const analyzeTicketWithAI = onDocumentCreated(
         throw new Error("Ticket không có nội dung khiếu nại để phân tích");
       }
 
+      // Giữ 1 lượt trong hạn mức AI của ngày trước khi gọi Gemini — vượt hạn
+      // mức (khiếu nại rác hàng loạt) thì ghi lastAIError để nhân viên tự
+      // xử lý, thay vì tiếp tục gọi Gemini cho tới khi cạn quota.
+      const quotaError = await reserveAIQuota(db, String(ticketData?.phone ?? ""));
+      if (quotaError) {
+        throw new Error(quotaError);
+      }
+
       const prompt = buildPrompt({ customerName, content, channel });
 
       const ai = new GoogleGenAI({ apiKey: geminiApiKey.value() });
@@ -221,6 +232,18 @@ export const analyzeTicketWithAI = onDocumentCreated(
  * nhân viên đã đăng nhập đọc collection "tickets".
  * ============================================================
  */
+/**
+ * Khóa đếm số lần tra cứu sai: theo IP của người gọi. Trên Cloud Functions
+ * thật, IP gốc nằm ở header x-forwarded-for (request đi qua Google Front End).
+ */
+function getClientKey(request: CallableRequest): string {
+  const forwarded = request.rawRequest?.headers?.["x-forwarded-for"];
+  const first = (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(",")[0]?.trim();
+  return first || request.rawRequest?.ip || "unknown";
+}
+
+const LOOKUP_LOCKED_MESSAGE = "Bạn đã tra cứu sai quá nhiều lần. Vui lòng thử lại sau 15 phút.";
+
 export const trackTicket = onCall(
   { region: "asia-southeast1" },
   async (request) => {
@@ -231,6 +254,13 @@ export const trackTicket = onCall(
     }
 
     const normalizedCode = code.trim().toUpperCase();
+    const clientKey = getClientKey(request);
+
+    // Chỉ đếm các lần tra cứu SAI — lần tra cứu đúng (kể cả website tự gọi
+    // lại mỗi 5 giây để cập nhật trạng thái) không bị tính vào giới hạn.
+    if (await isLookupLocked(db, clientKey)) {
+      throw new HttpsError("resource-exhausted", LOOKUP_LOCKED_MESSAGE);
+    }
 
     const snapshot = await db
       .collection("tickets")
@@ -243,6 +273,7 @@ export const trackTicket = onCall(
     // Không phân biệt "sai mã" hay "sai số điện thoại" trong thông báo lỗi —
     // tránh lộ thông tin cho việc dò mã ticket của người khác.
     if (!doc || doc.data().phone !== phone) {
+      await recordLookupFailure(db, clientKey);
       throw new HttpsError("not-found", "Không tìm thấy khiếu nại phù hợp.");
     }
 
@@ -291,13 +322,20 @@ export const submitTicketRating = onCall(
 
     const normalizedComment = typeof comment === "string" ? comment.trim().slice(0, 500) : "";
     const normalizedCode = code.trim().toUpperCase();
+    const clientKey = getClientKey(request);
+
+    if (await isLookupLocked(db, clientKey)) {
+      throw new HttpsError("resource-exhausted", LOOKUP_LOCKED_MESSAGE);
+    }
 
     // Đọc-kiểm tra-ghi phải nằm chung 1 transaction — nếu tách rời (đọc rồi
     // mới update như trước) thì 2 lần bấm gửi đánh giá liên tiếp thật nhanh
     // (double-tap, mạng lag rồi bấm lại) có thể cùng lúc pass qua bước kiểm
     // tra "chưa đánh giá" trước khi bước ghi kịp chạy, dẫn tới ghi đè lẫn
     // nhau + tạo 2 dòng lịch sử "rated" trùng lặp cho cùng 1 ticket.
+    let notFound = false;
     await db.runTransaction(async (transaction) => {
+      notFound = false;
       const snapshot = await transaction.get(
         db.collection("tickets").where("code", "==", normalizedCode).limit(1)
       );
@@ -305,7 +343,8 @@ export const submitTicketRating = onCall(
       const doc = snapshot.docs[0];
 
       if (!doc || doc.data().phone !== phone) {
-        throw new HttpsError("not-found", "Không tìm thấy khiếu nại phù hợp.");
+        notFound = true;
+        return;
       }
 
       const data = doc.data();
@@ -333,6 +372,11 @@ export const submitTicketRating = onCall(
         createdAt: FieldValue.serverTimestamp(),
       });
     });
+
+    if (notFound) {
+      await recordLookupFailure(db, clientKey);
+      throw new HttpsError("not-found", "Không tìm thấy khiếu nại phù hợp.");
+    }
 
     return { success: true };
   }
@@ -516,5 +560,23 @@ export const updateStaffAccount = onCall(
     logger.info(`[updateStaffAccount] Admin ${adminUid} cập nhật ${uid}: role=${String(role)}, active=${String(active)}`);
 
     return { success: true };
+  }
+);
+
+/**
+ * ============================================================
+ * Cloud Function: anonymizeOldTickets (chạy định kỳ)
+ * ============================================================
+ * Mỗi ngày lúc 02:00 (giờ Việt Nam) ẩn danh thông tin cá nhân của các
+ * ticket đã đóng quá RETENTION_DAYS ngày — logic nằm ở retention.ts.
+ * Trên Emulator, function dạng lịch này không tự chạy (cần Pub/Sub
+ * Emulator); trên môi trường thật cần gói Blaze (Cloud Scheduler).
+ * ============================================================
+ */
+export const anonymizeOldTickets = onSchedule(
+  { schedule: "0 2 * * *", timeZone: "Asia/Ho_Chi_Minh", region: "asia-southeast1" },
+  async () => {
+    const count = await anonymizeClosedTickets(db, RETENTION_DAYS);
+    logger.info(`[anonymizeOldTickets] Đã ẩn danh ${count} ticket đóng quá ${RETENTION_DAYS} ngày`);
   }
 );

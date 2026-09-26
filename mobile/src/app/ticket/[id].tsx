@@ -15,7 +15,12 @@ import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../contexts/AuthContext";
 import { FullScreenLoading } from "../../components/common/FullScreenLoading";
-import { getTicketById, reassignTicket, updateTicketStatus } from "../../services/ticket.service";
+import {
+  getTicketById,
+  reassignTicket,
+  subscribeToTicket,
+  updateTicketStatus,
+} from "../../services/ticket.service";
 import { subscribeToStaffList } from "../../services/staff.service";
 import { getAIResultById } from "../../services/ai-result.service";
 import { getNextTicketAction, getTicketStatusLabel } from "../../constants/ticket-status";
@@ -76,72 +81,74 @@ export default function TicketDetailScreen() {
     });
   };
 
+  // Lắng nghe realtime ticket: màn hình tự cập nhật khi AI phân tích xong,
+  // khi nhân viên khác vừa nhận xử lý hoặc khi admin chuyển ticket — nhân
+  // viên không phải thao tác trên dữ liệu cũ rồi mới bị rules từ chối.
   useEffect(() => {
     if (!user || !id) return;
 
-    let cancelled = false;
+    setTicketLoading(true);
+    setTicketError(null);
 
-    const load = async () => {
-      setTicketLoading(true);
-      setTicketError(null);
-      setAIResult(null);
-      setAIError(null);
-
-      try {
-        const foundTicket = await getTicketById(id);
-
-        if (cancelled) return;
-
-        if (!foundTicket) {
-          setTicket(null);
-          setTicketError("Không tìm thấy khiếu nại.");
-          setTicketLoading(false);
-          return;
-        }
-
+    const unsubscribe = subscribeToTicket(
+      id,
+      (foundTicket) => {
         setTicket(foundTicket);
+        setTicketError(foundTicket ? null : "Không tìm thấy khiếu nại.");
         setTicketLoading(false);
-
-        if (foundTicket.aiResultId) {
-          setAILoading(true);
-
-          try {
-            const foundAIResult = await getAIResultById(foundTicket.aiResultId);
-
-            if (cancelled) return;
-
-            if (!foundAIResult) {
-              setAIError("Kết quả phân tích AI không tồn tại.");
-            } else if (foundAIResult.ticketId !== foundTicket.id) {
-              // Kiểm tra quan hệ dữ liệu — không crash, chỉ báo không hợp lệ.
-              setAIError("Dữ liệu phân tích AI không hợp lệ.");
-            } else {
-              setAIResult(foundAIResult);
-            }
-          } catch (err) {
-            if (!cancelled) {
-              console.error("Lỗi khi tải kết quả AI:", err);
-              setAIError("Không thể tải kết quả phân tích AI.");
-            }
-          } finally {
-            if (!cancelled) setAILoading(false);
-          }
-        }
-      } catch (err) {
-        if (!cancelled) {
-          console.error("Lỗi khi tải chi tiết khiếu nại:", err);
-          setTicketError("Không thể tải chi tiết khiếu nại.");
-          setTicketLoading(false);
-        }
+      },
+      (err) => {
+        console.error("Lỗi khi tải chi tiết khiếu nại:", err);
+        setTicketError("Không thể tải chi tiết khiếu nại.");
+        setTicketLoading(false);
       }
-    };
+    );
 
-    load();
+    return () => unsubscribe();
+  }, [user, id]);
+
+  // Tải kết quả AI mỗi khi ticket có (hoặc đổi) aiResultId — kể cả trường
+  // hợp AI phân tích xong trong lúc nhân viên đang mở màn hình này.
+  const aiResultId = ticket?.aiResultId ?? null;
+  const loadedTicketId = ticket?.id ?? null;
+
+  useEffect(() => {
+    setAIResult(null);
+    setAIError(null);
+
+    if (!aiResultId || !loadedTicketId) {
+      setAILoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setAILoading(true);
+
+    getAIResultById(aiResultId)
+      .then((foundAIResult) => {
+        if (cancelled) return;
+        if (!foundAIResult) {
+          setAIError("Kết quả phân tích AI không tồn tại.");
+        } else if (foundAIResult.ticketId !== loadedTicketId) {
+          // Kiểm tra quan hệ dữ liệu — không crash, chỉ báo không hợp lệ.
+          setAIError("Dữ liệu phân tích AI không hợp lệ.");
+        } else {
+          setAIResult(foundAIResult);
+        }
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        console.error("Lỗi khi tải kết quả AI:", err);
+        setAIError("Không thể tải kết quả phân tích AI.");
+      })
+      .finally(() => {
+        if (!cancelled) setAILoading(false);
+      });
 
     return () => {
       cancelled = true;
     };
-  }, [user, id]);
+  }, [aiResultId, loadedTicketId]);
 
   // Chỉ admin đọc được danh sách nhân viên (firestore.rules) — dùng để chọn
   // người nhận khi chuyển ticket.
@@ -183,7 +190,7 @@ export default function TicketDetailScreen() {
         ...(action.nextStatus === "in_progress"
           ? { assignedTo: user.uid, assignedToName: user.email ?? undefined }
           : {}),
-        history: { actorName: user.email ?? "Nhân viên", ticketCode: ticket.code },
+        history: { actorName: user.email ?? "Nhân viên", actorUid: user.uid, ticketCode: ticket.code },
       };
 
       await updateTicketStatus(ticket.id, action.nextStatus, options);
@@ -243,7 +250,7 @@ export default function TicketDetailScreen() {
     try {
       await updateTicketStatus(ticket.id, "responded", {
         finalReply: trimmed,
-        history: { actorName: user.email ?? "Nhân viên", ticketCode: ticket.code },
+        history: { actorName: user.email ?? "Nhân viên", actorUid: user.uid, ticketCode: ticket.code },
       });
 
       setTicket((prev) => (prev ? { ...prev, status: "responded", finalReply: trimmed } : prev));
@@ -270,7 +277,7 @@ export default function TicketDetailScreen() {
       await reassignTicket(ticket.id, {
         assignedTo: reassignTarget.uid,
         assignedToName: targetName,
-        history: { actorName: user.email ?? "Quản trị viên", ticketCode: ticket.code },
+        history: { actorName: user.email ?? "Quản trị viên", actorUid: user.uid, ticketCode: ticket.code },
       });
 
       setTicket((prev) =>

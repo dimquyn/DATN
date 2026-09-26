@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { FirebaseError } from "firebase/app";
 import type { ChangeEvent, FocusEvent, FormEvent } from "react";
 import { trackTicket, submitTicketRating } from "../services/tracking.service";
 import { validatePhone } from "../utils/validation";
@@ -11,6 +12,12 @@ type LookupField = "code" | "phone";
 // "thời gian thực" bằng cách tự gọi lại trackTicket định kỳ trong lúc đang
 // xem kết quả, để trạng thái/phản hồi cập nhật mà khách không cần bấm gì.
 const POLL_INTERVAL_MS = 5000;
+
+// trackTicket/submitTicketRating tạm khóa theo IP khi tra cứu sai quá nhiều
+// lần (functions/src/limits.ts) — hiển thị đúng thông báo của server.
+function isLockedOut(err: unknown): err is FirebaseError {
+  return err instanceof FirebaseError && err.code === "functions/resource-exhausted";
+}
 
 // Custom hook: toàn bộ state + logic của màn "Theo dõi trạng thái" (tra cứu
 // bằng mã ticket + số điện thoại, xem phản hồi, gửi đánh giá). Tách khỏi
@@ -57,8 +64,12 @@ export function useTrackTicket(initialCode?: string | null) {
       setRatingValue(0);
       setRatingComment("");
       setRatingError(null);
-    } catch {
-      setLookupError("Không tìm thấy khiếu nại phù hợp. Vui lòng kiểm tra lại mã và số điện thoại.");
+    } catch (err) {
+      setLookupError(
+        isLockedOut(err)
+          ? err.message
+          : "Không tìm thấy khiếu nại phù hợp. Vui lòng kiểm tra lại mã và số điện thoại."
+      );
     } finally {
       setLoading(false);
     }
@@ -90,8 +101,8 @@ export function useTrackTicket(initialCode?: string | null) {
       setTicket((prev) =>
         prev ? { ...prev, rating: ratingValue, ratingComment: trimmedComment || null } : prev
       );
-    } catch {
-      setRatingError("Gửi đánh giá thất bại. Vui lòng thử lại.");
+    } catch (err) {
+      setRatingError(isLockedOut(err) ? err.message : "Gửi đánh giá thất bại. Vui lòng thử lại.");
     } finally {
       setRatingSubmitting(false);
     }

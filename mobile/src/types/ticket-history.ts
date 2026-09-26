@@ -7,7 +7,8 @@ export type TicketHistoryAction =
   | "reassigned"
   | "responded"
   | "closed"
-  | "rated";
+  | "rated"
+  | "anonymized";
 
 export interface TicketHistoryEntry {
   id: string;

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { ChangeEvent, FocusEvent, FormEvent } from "react";
+import { FirebaseError } from "firebase/app";
 import { collection, doc, runTransaction, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
 import { TICKET_CHANNELS } from "../types/ticket";
@@ -20,7 +21,14 @@ async function createTicketWithCode(
     const nextNumber = (counterSnap.exists() ? (counterSnap.data().count as number) : 0) + 1;
     const code = `TK${String(nextNumber).padStart(2, "0")}`;
 
-    transaction.set(TICKETS_COUNTER_REF, { count: nextNumber }, { merge: true });
+    // lastTicketId + phone_cooldowns: firestore.rules chỉ cho tăng bộ đếm
+    // khi có ticket được tạo kèm trong cùng transaction, và mỗi số điện
+    // thoại phải chờ 30 giây giữa 2 lần gửi (chống gửi khiếu nại hàng loạt).
+    transaction.set(TICKETS_COUNTER_REF, { count: nextNumber, lastTicketId: ticketRef.id });
+    transaction.set(doc(db, "phone_cooldowns", String(ticketData.phone)), {
+      lastAt: serverTimestamp(),
+      ticketId: ticketRef.id,
+    });
     transaction.set(ticketRef, { ...ticketData, code });
     transaction.set(historyRef, {
       ticketId: ticketRef.id,
@@ -139,7 +147,13 @@ export function useComplaintForm() {
       setTouched({});
     } catch (err) {
       console.error(err);
-      setSubmitError("Gửi khiếu nại thất bại. Vui lòng thử lại.");
+      // Dữ liệu đã qua validate ở trên nên permission-denied gần như chắc
+      // chắn là do số điện thoại vừa gửi khiếu nại chưa quá 30 giây.
+      setSubmitError(
+        err instanceof FirebaseError && err.code === "permission-denied"
+          ? "Số điện thoại này vừa gửi khiếu nại. Vui lòng chờ 30 giây rồi thử lại."
+          : "Gửi khiếu nại thất bại. Vui lòng thử lại."
+      );
     } finally {
       setSubmitting(false);
     }

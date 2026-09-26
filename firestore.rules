@@ -27,6 +27,12 @@ service cloud.firestore {
       return isStaff() && get(staffPath(request.auth.uid)).data.role == 'admin';
     }
 
+    // Document được ghi trong CÙNG request (transaction/batch) với ticket
+    // mới tạo: chưa tồn tại trước request, tồn tại sau request.
+    function isCreatedInThisRequest(path) {
+      return !exists(path) && existsAfter(path);
+    }
+
     // Khách gửi khiếu nại từ website (KHÔNG đăng nhập) chỉ được tạo ticket
     // mới đúng ở trạng thái ban đầu, với đúng bộ field mà form gửi lên —
     // không được tự gán người xử lý, kết quả AI, hay chèn thêm field lạ.
@@ -57,6 +63,7 @@ service cloud.firestore {
         && data.code is string && isNextTicketCode(data.code)
         && data.customerName is string && data.customerName.trim().size() > 0 && data.customerName.size() <= 100
         && data.phone is string && data.phone.matches('0[35789][0-9]{8}')
+        && getAfter(/databases/$(database)/documents/phone_cooldowns/$(data.phone)).data.lastAt == request.time
         && data.email is string && data.email.size() <= 100 && data.email.matches('[^\\s@]+@[^\\s@]+[.][^\\s@]+')
         && data.content is string && data.content.trim().size() >= 20 && data.content.size() <= 1000
         && data.channel in ['Website', 'Facebook', 'Zalo', 'Email']
@@ -131,6 +138,27 @@ service cloud.firestore {
         );
     }
 
+    // Nhân viên chỉ được ghi 1 dòng lịch sử kèm đúng thao tác vừa thực hiện
+    // trên ticket trong CÙNG batch (ticket có updatedAt == request.time) —
+    // không tự chèn được dòng lịch sử tùy ý, không mạo danh người khác
+    // (actorUid phải là chính mình), và action phải khớp trạng thái mới.
+    function isValidStaffHistoryEntry(ticketId) {
+      let entry = request.resource.data;
+      let ticketAfter = getAfter(/databases/$(database)/documents/tickets/$(ticketId)).data;
+      return entry.keys().hasOnly(['ticketId', 'ticketCode', 'action', 'actorName', 'actorUid', 'createdAt'])
+        && entry.ticketId == ticketId
+        && entry.actorUid == request.auth.uid
+        && entry.actorName is string && entry.actorName.size() <= 300
+        && entry.createdAt == request.time
+        && ticketAfter.updatedAt == request.time
+        && (
+          (entry.action == 'claimed' && ticketAfter.status == 'in_progress' && ticketAfter.assignedTo == request.auth.uid)
+          || (entry.action == 'responded' && ticketAfter.status == 'responded')
+          || (entry.action == 'closed' && ticketAfter.status == 'closed')
+          || (entry.action == 'reassigned' && ticketAfter.status == 'in_progress' && isAdmin())
+        );
+    }
+
     match /tickets/{ticketId} {
       allow read: if isStaff();
       allow create: if isValidNewTicket();
@@ -148,7 +176,7 @@ service cloud.firestore {
         // ticket chưa tồn tại trước request nhưng tồn tại sau request, và
         // ticketCode phải trùng mã của ticket đó — chặn việc chèn thêm dòng
         // "created" giả vào lịch sử của ticket đã có.
-        allow create: if isStaff()
+        allow create: if (isStaff() && isValidStaffHistoryEntry(ticketId))
           || (
             request.resource.data.keys().hasOnly(['ticketId', 'ticketCode', 'action', 'actorName', 'createdAt'])
             && request.resource.data.ticketId == ticketId
@@ -169,13 +197,55 @@ service cloud.firestore {
     // transaction tạo ticket (useComplaintForm.ts) phải đọc được giá trị
     // hiện tại trước khi tăng — giá trị này không có gì nhạy cảm (chỉ là
     // số thứ tự); chặn "list" vì không có lý do gì để liệt kê collection này.
+    // lastTicketId phải là ticket được tạo trong cùng transaction — không
+    // tăng bộ đếm "suông" mà không kèm ticket.
+    function isCounterBumpWithTicket() {
+      let data = request.resource.data;
+      return data.keys().hasOnly(['count', 'lastTicketId'])
+        && data.lastTicketId is string
+        && isCreatedInThisRequest(/databases/$(database)/documents/tickets/$(data.lastTicketId));
+    }
+
     match /counters/tickets {
       allow get: if true;
       allow list: if false;
-      allow create: if request.resource.data.keys().hasOnly(['count']) && request.resource.data.count == 1;
-      allow update: if request.resource.data.keys().hasOnly(['count'])
+      allow create: if isCounterBumpWithTicket() && request.resource.data.count == 1;
+      allow update: if isCounterBumpWithTicket()
         && request.resource.data.count == resource.data.count + 1;
       allow delete: if false;
+    }
+
+    // Thời gian chờ giữa 2 lần gửi khiếu nại của cùng 1 số điện thoại (30
+    // giây) — chống gửi liên tục/tự động bằng 1 số điện thoại. Mỗi ticket
+    // mới bắt buộc ghi kèm document này (xem isValidNewTicket), ticketId
+    // phải là ticket vừa tạo cùng request và có đúng số điện thoại đó.
+    // Không cho client đọc: tránh lộ số điện thoại nào vừa gửi khiếu nại.
+    function isValidCooldown(phone) {
+      let data = request.resource.data;
+      let ticketPath = /databases/$(database)/documents/tickets/$(data.ticketId);
+      return data.keys().hasOnly(['lastAt', 'ticketId'])
+        && data.lastAt == request.time
+        && data.ticketId is string
+        && isCreatedInThisRequest(ticketPath)
+        && getAfter(ticketPath).data.phone == phone;
+    }
+
+    match /phone_cooldowns/{phone} {
+      allow read: if false;
+      allow create: if isValidCooldown(phone);
+      allow update: if isValidCooldown(phone)
+        && request.time > resource.data.lastAt + duration.value(30, 's');
+      allow delete: if false;
+    }
+
+    // Dữ liệu đếm hạn mức (AI theo ngày, tra cứu sai theo IP) — chỉ Cloud
+    // Functions (Admin SDK) đọc/ghi.
+    match /ai_usage/{docId} {
+      allow read, write: if false;
+    }
+
+    match /rate_limits/{docId} {
+      allow read, write: if false;
     }
 
     // Hồ sơ phân quyền nhân viên. Mỗi người đọc được hồ sơ của chính mình

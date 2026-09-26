@@ -94,7 +94,7 @@ export default function ComplaintPage() {
                 />
               </FormField>
 
-              <FormField id="channel" label="Chọn kênh gửi">
+              <FormField id="channel" label="Chọn kênh gửi mô phỏng">
                 <select
                   id="channel"
                   name="channel"

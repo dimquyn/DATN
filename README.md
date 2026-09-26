@@ -115,6 +115,26 @@ npm run seed:staff -- --email admin@cskh.vn --password admin123 --name "Quản t
 ```
 Đăng nhập app bằng tài khoản admin → tab **Cá nhân** → **Quản lý nhân viên** để thêm, cấp quyền admin hoặc khóa tài khoản nhân viên.
 
+Muốn giữ dữ liệu Emulator giữa các lần chạy (không phải seed lại mỗi lần):
+```bash
+firebase emulators:start --import=./emulator-data --export-on-exit
+```
+
+### Giới hạn chống lạm dụng
+- Cùng 1 số điện thoại phải chờ **30 giây** giữa 2 lần gửi khiếu nại (firestore.rules, collection `phone_cooldowns`).
+- Phân tích AI tối đa **200 lượt/ngày** toàn hệ thống và **5 lượt/ngày/số điện thoại** (`functions/src/limits.ts`); vượt hạn mức thì ticket được ghi `lastAIError` để nhân viên xử lý thủ công.
+- Tra cứu/đánh giá sai quá **10 lần trong 15 phút** thì IP bị khóa tạm thời.
+- Ticket đã đóng quá **365 ngày** được tự động ẩn danh họ tên, số điện thoại, email (`anonymizeOldTickets`, chạy 02:00 hằng ngày — cần gói Blaze, không chạy trên Emulator).
+
+### Kiểm thử tự động
+```bash
+cd tests
+npm install
+npm test          # firestore.rules + hàm giới hạn/ẩn danh (Firestore Emulator)
+npm run test:e2e  # phân quyền + Cloud Functions (Auth, Firestore, Functions Emulator)
+```
+Lưu ý: tắt `firebase emulators:start` đang chạy trước khi chạy test (trùng cổng).
+
 ---
 ## Tài liệu
 ### Thiết kế giao diện

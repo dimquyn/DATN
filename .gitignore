@@ -23,6 +23,7 @@ build/Release/
 # Firebase
 # =========================
 .firebase/
+emulator-data/
 .dataconnect/
 firebase-debug.log
 firebase-debug.log*

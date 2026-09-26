@@ -8,6 +8,7 @@ export const TICKET_HISTORY_LABELS: Record<TicketHistoryAction, string> = {
   responded: "Đã gửi phản hồi khách hàng",
   closed: "Ticket đóng",
   rated: "Khách hàng đánh giá",
+  anonymized: "Ẩn danh dữ liệu khách hàng",
 };
 
 export function getTicketHistoryLabel(action: string): string {
@@ -25,6 +26,7 @@ export const TICKET_HISTORY_DOT_COLORS: Record<TicketHistoryAction, string> = {
   responded: "#F97316",
   closed: "#10B981",
   rated: "#EAB308",
+  anonymized: "#6B7280",
 };
 
 export function getTicketHistoryDotColor(action: string): string {

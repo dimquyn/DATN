@@ -1,0 +1,14 @@
+{
+  "name": "datn-tests",
+  "private": true,
+  "type": "module",
+  "description": "Kiểm thử tự động firestore.rules và Cloud Functions trên Firebase Local Emulator Suite",
+  "scripts": {
+    "test": "npm --prefix ../functions run build && firebase emulators:exec --only firestore --project demo-datn-test \"node --test --test-concurrency=1 rules.test.mjs limits.test.mjs\"",
+    "test:e2e": "npm --prefix ../functions run build && firebase emulators:exec --only auth,firestore,functions --project demo-datn-test \"node --test e2e.test.mjs\""
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.0",
+    "firebase": "^12.15.0"
+  }
+}
