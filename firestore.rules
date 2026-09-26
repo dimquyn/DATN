@@ -13,6 +13,21 @@ service cloud.firestore {
     // Khách gửi khiếu nại từ website (KHÔNG đăng nhập) chỉ được tạo ticket
     // mới đúng ở trạng thái ban đầu, với đúng bộ field mà form gửi lên —
     // không được tự gán người xử lý, kết quả AI, hay chèn thêm field lạ.
+    // Giới hạn độ dài/định dạng khớp với website/src/utils/validation.ts để
+    // gọi thẳng Firestore SDK (bỏ qua form) cũng không tạo được ticket sai
+    // định dạng: họ tên 1-100 ký tự, SĐT di động Việt Nam 10 số, email
+    // đúng định dạng tối đa 100 ký tự, nội dung 20-1000 ký tự (sau trim).
+    // Mã ticket phải đúng bằng giá trị bộ đếm SAU khi tăng trong cùng
+    // transaction (TK01, TK02, ..., TK10, TK100) — tức là mỗi ticket mới bắt
+    // buộc tăng bộ đếm đúng 1 lần và không thể tự đặt mã trùng/giả mạo.
+    function isNextTicketCode(code) {
+      let counterPath = /databases/$(database)/documents/counters/tickets;
+      let countBefore = exists(counterPath) ? get(counterPath).data.count : 0;
+      let countAfter = getAfter(counterPath).data.count;
+      return countAfter == countBefore + 1
+        && code == (countAfter < 10 ? 'TK0' + string(countAfter) : 'TK' + string(countAfter));
+    }
+
     function isValidNewTicket() {
       let data = request.resource.data;
       return data.keys().hasOnly([
@@ -22,10 +37,11 @@ service cloud.firestore {
         && data.status == 'pending'
         && data.assignedTo == null
         && data.aiResultId == null
-        && data.customerName is string && data.customerName.size() > 0 && data.customerName.size() <= 200
-        && data.phone is string && data.phone.size() <= 20
-        && data.email is string && data.email.size() <= 200
-        && data.content is string && data.content.size() > 0 && data.content.size() <= 5000
+        && data.code is string && isNextTicketCode(data.code)
+        && data.customerName is string && data.customerName.trim().size() > 0 && data.customerName.size() <= 100
+        && data.phone is string && data.phone.matches('0[35789][0-9]{8}')
+        && data.email is string && data.email.size() <= 100 && data.email.matches('[^\\s@]+@[^\\s@]+[.][^\\s@]+')
+        && data.content is string && data.content.trim().size() >= 20 && data.content.size() <= 1000
         && data.channel in ['Website', 'Facebook', 'Zalo', 'Email']
         && data.createdAt == request.time
         && data.updatedAt == request.time;
@@ -64,8 +80,11 @@ service cloud.firestore {
           // Hình thức liên hệ hiển thị cho nhân viên lấy thẳng từ channel
           // của ticket (khiếu nại tới từ đâu thì phản hồi qua đó), không
           // còn là field riêng để nhân viên tự chọn.
+          // Chỉ chính nhân viên đã "Nhận xử lý" (assignedTo) mới được phản
+          // hồi — nhân viên khác không thể phản hồi thay.
           || (
             changedKeys.hasOnly(['status', 'finalReply', 'updatedAt'])
+            && before.assignedTo == request.auth.uid
             && before.status == 'in_progress'
             && after.status == 'responded'
             && after.finalReply is string
@@ -73,8 +92,10 @@ service cloud.firestore {
             && after.finalReply.size() <= 5000
           )
           // "Đóng khiếu nại": responded -> closed, không đổi field nào khác.
+          // Cũng chỉ nhân viên đang xử lý ticket mới được đóng.
           || (
             changedKeys.hasOnly(['status', 'updatedAt'])
+            && before.assignedTo == request.auth.uid
             && before.status == 'responded'
             && after.status == 'closed'
           )
@@ -94,6 +115,10 @@ service cloud.firestore {
         // 1 dòng lịch sử "created" kèm ticket vừa tạo; mọi bước tiếp theo
         // (claimed/responded/closed/ai_analyzed) do nhân viên đã đăng nhập
         // hoặc Cloud Functions (Admin SDK) ghi.
+        // Dòng "created" chỉ ghi được trong cùng transaction tạo ticket:
+        // ticket chưa tồn tại trước request nhưng tồn tại sau request, và
+        // ticketCode phải trùng mã của ticket đó — chặn việc chèn thêm dòng
+        // "created" giả vào lịch sử của ticket đã có.
         allow create: if isStaff()
           || (
             request.resource.data.keys().hasOnly(['ticketId', 'ticketCode', 'action', 'actorName', 'createdAt'])
@@ -101,6 +126,10 @@ service cloud.firestore {
             && request.resource.data.action == 'created'
             && request.resource.data.actorName is string
             && request.resource.data.createdAt == request.time
+            && !exists(/databases/$(database)/documents/tickets/$(ticketId))
+            && existsAfter(/databases/$(database)/documents/tickets/$(ticketId))
+            && request.resource.data.ticketCode
+              == getAfter(/databases/$(database)/documents/tickets/$(ticketId)).data.code
           );
         allow update, delete: if false;
       }

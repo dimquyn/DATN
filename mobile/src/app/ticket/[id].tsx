@@ -205,6 +205,8 @@ export default function TicketDetailScreen() {
   const handleConfirmReply = async () => {
     if (!user || !ticket || confirmingReply) return;
     if (ticket.status !== "in_progress") return;
+    // Chỉ nhân viên đã "Nhận xử lý" mới được phản hồi (khớp firestore.rules).
+    if (ticket.assignedTo !== user.uid) return;
 
     const trimmed = replyDraft.trim();
 
@@ -256,6 +258,10 @@ export default function TicketDetailScreen() {
   const isRespondedPhase = ticket?.status === "responded" || ticket?.status === "closed";
   const showReplyToggle =
     !!ticket && ((isEditablePhase && (!!aiResult || aiFailed)) || isRespondedPhase);
+  // Sau khi đã có người "Nhận xử lý", chỉ chính người đó mới được phản hồi và
+  // đóng khiếu nại — nhân viên khác chỉ xem (firestore.rules cũng chặn tương tự).
+  const isAssignedToMe = !!ticket?.assignedTo && ticket.assignedTo === user.uid;
+  const isAssignedToOther = !!ticket?.assignedTo && ticket.assignedTo !== user.uid;
 
   return (
     <View style={styles.screen}>
@@ -460,14 +466,14 @@ export default function TicketDetailScreen() {
                           value={replyDraft}
                           onChangeText={setReplyDraft}
                           onFocus={handleReplyInputFocus}
-                          editable={!confirmingReply}
+                          editable={!confirmingReply && !isAssignedToOther}
                         />
 
                         {confirmReplyError && (
                           <Text style={styles.actionErrorText}>{confirmReplyError}</Text>
                         )}
 
-                        {ticket.status === "in_progress" ? (
+                        {ticket.status === "in_progress" && isAssignedToMe ? (
                           <Pressable
                             onPress={handleConfirmReply}
                             disabled={confirmingReply || replyDraft.trim().length === 0}
@@ -486,7 +492,9 @@ export default function TicketDetailScreen() {
                           </Pressable>
                         ) : (
                           <Text style={styles.hintText}>
-                            Nhận xử lý ticket trước khi phản hồi.
+                            {isAssignedToOther
+                              ? "Ticket này đang do nhân viên khác xử lý."
+                              : "Nhận xử lý ticket trước khi phản hồi."}
                           </Text>
                         )}
                       </>
@@ -528,14 +536,17 @@ export default function TicketDetailScreen() {
               }
 
               const isClaimAction = action.nextStatus === "in_progress";
-              const isTakenByOther =
-                isClaimAction && !!ticket.assignedTo && ticket.assignedTo !== user.uid;
+              // Nhận xử lý: bị chặn nếu người khác đã nhận trước.
+              // Đóng khiếu nại: chỉ người đang xử lý ticket mới được đóng.
+              const isTakenByOther = isClaimAction ? isAssignedToOther : !isAssignedToMe;
 
               if (isTakenByOther) {
                 return (
                   <View style={styles.card}>
                     <Text style={styles.pendingText}>
-                      Ticket này đã được nhận xử lý bởi nhân viên khác.
+                      {isClaimAction
+                        ? "Ticket này đã được nhận xử lý bởi nhân viên khác."
+                        : "Chỉ nhân viên đang xử lý ticket này mới được đóng khiếu nại."}
                     </Text>
                   </View>
                 );

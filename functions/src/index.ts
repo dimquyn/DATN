@@ -121,9 +121,11 @@ export const analyzeTicketWithAI = onDocumentCreated(
       const content: string = ticketData?.content ?? "";
       const channel: string = ticketData?.channel ?? "Không xác định";
 
+      // Không return im lặng: ném lỗi để khối catch ghi lastAIError, nhờ đó
+      // ticket không kẹt mãi ở "pending" — nhân viên vẫn "Nhận xử lý" và tự
+      // soạn phản hồi thủ công được như các trường hợp AI lỗi khác.
       if (!content.trim()) {
-        logger.warn(`[analyzeTicketWithAI] Ticket ${ticketId} không có nội dung, bỏ qua phân tích AI`);
-        return;
+        throw new Error("Ticket không có nội dung khiếu nại để phân tích");
       }
 
       const prompt = buildPrompt({ customerName, content, channel });
