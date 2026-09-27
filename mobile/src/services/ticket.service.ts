@@ -35,6 +35,14 @@ function mapTicketData(id: string, data: DocumentData): Ticket {
     rating: data.rating ?? null,
     ratingComment: data.ratingComment ?? null,
     ratedAt: data.ratedAt ?? null,
+    claimedAt: data.claimedAt ?? null,
+    respondedAt: data.respondedAt ?? null,
+    closedAt: data.closedAt ?? null,
+    escalated: data.escalated === true,
+    escalatedBy: data.escalatedBy ?? null,
+    escalatedByName: data.escalatedByName ?? null,
+    escalationNote: data.escalationNote ?? null,
+    escalatedAt: data.escalatedAt ?? null,
     createdAt: data.createdAt ?? null,
     updatedAt: data.updatedAt ?? null,
     lastAIError: data.lastAIError,
@@ -48,6 +56,14 @@ const STATUS_TO_HISTORY_ACTION: Partial<Record<TicketStatus, string>> = {
   in_progress: "claimed",
   responded: "responded",
   closed: "closed",
+};
+
+// Mốc thời gian ghi kèm từng bước chuyển (firestore.rules bắt buộc bằng giờ
+// server) — nguồn số liệu thời gian xử lý của báo cáo quản lý.
+const STATUS_TO_TIMESTAMP_FIELD: Partial<Record<TicketStatus, string>> = {
+  in_progress: "claimedAt",
+  responded: "respondedAt",
+  closed: "closedAt",
 };
 
 export function subscribeToTickets(
@@ -141,6 +157,11 @@ export async function updateTicketStatus(
     updatedAt: serverTimestamp(),
   };
 
+  const timestampField = STATUS_TO_TIMESTAMP_FIELD[status];
+  if (timestampField) {
+    updates[timestampField] = serverTimestamp();
+  }
+
   if (options?.assignedTo) {
     updates.assignedTo = options.assignedTo;
   }
@@ -201,6 +222,49 @@ export async function reassignTicket(
     actorName: `${options.history.actorName} → ${options.assignedToName}`,
     actorUid: options.history.actorUid,
     ticketCode: options.history.ticketCode,
+  });
+  await batch.commit();
+}
+
+/** Ticket đã được chuyển lên và đang chờ 1 quản trị viên nhận xử lý. */
+export function isAwaitingAdmin(ticket: Ticket): boolean {
+  return ticket.escalated && !ticket.assignedTo && ticket.status === "in_progress";
+}
+
+export interface EscalateTicketOptions {
+  /** Lý do chuyển (bắt buộc, tối đa 500 ký tự — khớp firestore.rules). */
+  note: string;
+  actorName: string;
+  actorUid: string;
+  ticketCode?: string | null;
+}
+
+/**
+ * Nhân viên đang xử lý chuyển ticket cho quản trị viên khi không tự giải
+ * quyết được: bỏ người xử lý (assignedTo = null) và đánh dấu escalated —
+ * ticket vào hàng chờ chung, quản trị viên nào nhận trước thì xử lý.
+ * Trạng thái giữ nguyên in_progress. Ghi kèm lịch sử "escalated".
+ */
+export async function escalateTicket(
+  ticketId: string,
+  options: EscalateTicketOptions
+): Promise<void> {
+  const batch = writeBatch(db);
+  batch.update(doc(db, TICKETS_COLLECTION, ticketId), {
+    assignedTo: null,
+    assignedToName: null,
+    escalated: true,
+    escalatedBy: options.actorUid,
+    escalatedByName: options.actorName,
+    escalationNote: options.note,
+    escalatedAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+  addTicketHistoryEntryToBatch(batch, ticketId, {
+    action: "escalated",
+    actorName: options.actorName,
+    actorUid: options.actorUid,
+    ticketCode: options.ticketCode,
   });
   await batch.commit();
 }

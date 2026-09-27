@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { ManagerReport } from "../../components/admin/ManagerReport";
+import { useAuth } from "../../contexts/AuthContext";
 import { subscribeToTickets } from "../../services/ticket.service";
 import { isTicketOverdue } from "../../utils/ticket-sla";
 import type { Ticket } from "../../types/ticket";
@@ -23,6 +25,8 @@ const PRIORITY_ROWS: {
   { key: "Low", paramKey: "low", label: "Thấp", dotColor: "#6366F1" },
 ];
 
+type OverviewTab = "report" | "work";
+
 function formatToday(): string {
   const now = new Date();
   return `Hôm nay, ${now.toLocaleDateString("vi-VN")}`;
@@ -31,6 +35,12 @@ function formatToday(): string {
 export default function OverviewScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { isAdmin } = useAuth();
+
+  // Quản trị viên mở màn này mặc định ở "Báo cáo quản lý"; nhân viên thường
+  // chỉ có phần "Công việc" (không hiện thanh chuyển tab).
+  const [tab, setTab] = useState<OverviewTab>("report");
+  const showReport = isAdmin && tab === "report";
 
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
@@ -99,124 +109,151 @@ export default function OverviewScreen() {
       style={styles.screen}
       contentContainerStyle={[styles.content, { paddingTop: insets.top + 20 }]}
     >
-      <Text style={styles.title}>Tổng quan công việc</Text>
+      <Text style={styles.title}>{isAdmin ? "Tổng quan quản lý" : "Tổng quan công việc"}</Text>
       <Text style={styles.subtitle}>{formatToday()}</Text>
 
-      <View style={styles.statRow}>
-        <Pressable
-          style={[styles.statCard, { backgroundColor: "#EEF2FF" }]}
-          onPress={() => router.push({ pathname: "/tickets", params: { filter: "new" } })}
-        >
-          <Text style={styles.statLabel}>TICKET MỚI</Text>
-          <Text style={[styles.statValue, { color: "#4338CA" }]}>{stats.newCount}</Text>
-        </Pressable>
-        <Pressable
-          style={[styles.statCard, { backgroundColor: "#FFF1E8" }]}
-          onPress={() => router.push({ pathname: "/tickets", params: { filter: "in_progress" } })}
-        >
-          <Text style={styles.statLabel}>ĐANG XỬ LÝ</Text>
-          <Text style={[styles.statValue, { color: "#C2410C" }]}>
-            {String(stats.inProgressCount).padStart(2, "0")}
-          </Text>
-        </Pressable>
-      </View>
-
-      <View style={[styles.statRow, styles.statRowSecond]}>
-        <Pressable
-          style={[styles.statCard, { backgroundColor: "#FEF2F2" }]}
-          onPress={() => router.push({ pathname: "/tickets", params: { filter: "overdue" } })}
-        >
-          <Text style={styles.statLabel}>QUÁ HẠN</Text>
-          <Text style={[styles.statValue, { color: "#B91C1C" }]}>
-            {String(stats.overdueCount).padStart(2, "0")}
-          </Text>
-        </Pressable>
-        <Pressable
-          style={[styles.statCard, { backgroundColor: "#ECFDF5" }]}
-          onPress={() => router.push({ pathname: "/tickets", params: { filter: "closed" } })}
-        >
-          <Text style={styles.statLabel}>ĐÃ HOÀN THÀNH</Text>
-          <Text style={[styles.statValue, { color: "#047857" }]}>
-            {String(stats.doneCount).padStart(2, "0")}
-          </Text>
-        </Pressable>
-      </View>
-
-      <View style={styles.sectionHeaderRow}>
-        <Text style={styles.sectionTitle}>Mức độ ưu tiên</Text>
-        {updatedAt && (
-          <Text style={styles.sectionUpdatedText}>
-            Cập nhật lúc{" "}
-            {updatedAt.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
-          </Text>
-        )}
-      </View>
-
-      <View style={styles.priorityList}>
-        {PRIORITY_ROWS.map((row) => (
-          <Pressable
-            key={row.key}
-            style={styles.priorityRow}
-            onPress={() =>
-              router.push({ pathname: "/tickets", params: { priority: row.paramKey } })
-            }
-          >
-            <View style={styles.priorityRowLeft}>
-              <View style={[styles.priorityDot, { backgroundColor: row.dotColor }]} />
-              <Text style={styles.priorityLabel}>{row.label}</Text>
-            </View>
-            <Text style={styles.priorityValue}>{stats.priorityCount[row.key]}</Text>
-          </Pressable>
-        ))}
-      </View>
-
-      <Text style={[styles.sectionTitle, styles.satisfactionTitle]}>Đánh giá khách hàng</Text>
-
-      {stats.ratingCount > 0 ? (
-        <>
-          <Pressable
-            style={styles.satisfactionCard}
-            onPress={() => router.push({ pathname: "/ratings" })}
-          >
-            <View style={styles.satisfactionRow}>
-              <Text style={styles.satisfactionScore}>{stats.averageRating.toFixed(1)}/5</Text>
-              <Text style={styles.satisfactionStars}>
-                {"★".repeat(Math.round(stats.averageRating))}
-                {"☆".repeat(5 - Math.round(stats.averageRating))}
+      {isAdmin && (
+        <View style={styles.tabBar}>
+          {(
+            [
+              { key: "report", label: "Báo cáo quản lý" },
+              { key: "work", label: "Công việc" },
+            ] as const
+          ).map((item) => (
+            <Pressable
+              key={item.key}
+              style={[styles.tabItem, tab === item.key && styles.tabItemActive]}
+              onPress={() => setTab(item.key)}
+            >
+              <Text style={[styles.tabText, tab === item.key && styles.tabTextActive]}>
+                {item.label}
               </Text>
-            </View>
-            <Text style={styles.satisfactionMeta}>
-              {stats.ratingCount} lượt đánh giá · Xem danh sách →
-            </Text>
-            <Text style={styles.satisfactionMeta}>
-              {stats.highRatingPercent}% đánh giá 4–5 sao
-            </Text>
-          </Pressable>
+            </Pressable>
+          ))}
+        </View>
+      )}
+
+      {showReport ? (
+        <ManagerReport tickets={tickets} />
+      ) : (
+        <>
+          <View style={styles.statRow}>
+            <Pressable
+              style={[styles.statCard, { backgroundColor: "#EEF2FF" }]}
+              onPress={() => router.push({ pathname: "/tickets", params: { filter: "new" } })}
+            >
+              <Text style={styles.statLabel}>TICKET MỚI</Text>
+              <Text style={[styles.statValue, { color: "#4338CA" }]}>{stats.newCount}</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.statCard, { backgroundColor: "#FFF1E8" }]}
+              onPress={() => router.push({ pathname: "/tickets", params: { filter: "in_progress" } })}
+            >
+              <Text style={styles.statLabel}>ĐANG XỬ LÝ</Text>
+              <Text style={[styles.statValue, { color: "#C2410C" }]}>
+                {String(stats.inProgressCount).padStart(2, "0")}
+              </Text>
+            </Pressable>
+          </View>
+
+          <View style={[styles.statRow, styles.statRowSecond]}>
+            <Pressable
+              style={[styles.statCard, { backgroundColor: "#FEF2F2" }]}
+              onPress={() => router.push({ pathname: "/tickets", params: { filter: "overdue" } })}
+            >
+              <Text style={styles.statLabel}>QUÁ HẠN</Text>
+              <Text style={[styles.statValue, { color: "#B91C1C" }]}>
+                {String(stats.overdueCount).padStart(2, "0")}
+              </Text>
+            </Pressable>
+            <Pressable
+              style={[styles.statCard, { backgroundColor: "#ECFDF5" }]}
+              onPress={() => router.push({ pathname: "/tickets", params: { filter: "closed" } })}
+            >
+              <Text style={styles.statLabel}>ĐÃ HOÀN THÀNH</Text>
+              <Text style={[styles.statValue, { color: "#047857" }]}>
+                {String(stats.doneCount).padStart(2, "0")}
+              </Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionTitle}>Mức độ ưu tiên</Text>
+            {updatedAt && (
+              <Text style={styles.sectionUpdatedText}>
+                Cập nhật lúc{" "}
+                {updatedAt.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
+              </Text>
+            )}
+          </View>
 
           <View style={styles.priorityList}>
-            {[5, 4, 3, 2, 1].map((star) => (
+            {PRIORITY_ROWS.map((row) => (
               <Pressable
-                key={star}
+                key={row.key}
                 style={styles.priorityRow}
                 onPress={() =>
-                  router.push({ pathname: "/ratings", params: { star: String(star) } })
+                  router.push({ pathname: "/tickets", params: { priority: row.paramKey } })
                 }
               >
                 <View style={styles.priorityRowLeft}>
-                  <Text style={styles.starRowLabel}>
-                    {"★".repeat(star)}
-                    {"☆".repeat(5 - star)}
-                  </Text>
+                  <View style={[styles.priorityDot, { backgroundColor: row.dotColor }]} />
+                  <Text style={styles.priorityLabel}>{row.label}</Text>
                 </View>
-                <Text style={styles.priorityValue}>{stats.ratingStarCounts[star]}</Text>
+                <Text style={styles.priorityValue}>{stats.priorityCount[row.key]}</Text>
               </Pressable>
             ))}
           </View>
+
+          <Text style={[styles.sectionTitle, styles.satisfactionTitle]}>Đánh giá khách hàng</Text>
+
+          {stats.ratingCount > 0 ? (
+            <>
+              <Pressable
+                style={styles.satisfactionCard}
+                onPress={() => router.push({ pathname: "/ratings" })}
+              >
+                <View style={styles.satisfactionRow}>
+                  <Text style={styles.satisfactionScore}>{stats.averageRating.toFixed(1)}/5</Text>
+                  <Text style={styles.satisfactionStars}>
+                    {"★".repeat(Math.round(stats.averageRating))}
+                    {"☆".repeat(5 - Math.round(stats.averageRating))}
+                  </Text>
+                </View>
+                <Text style={styles.satisfactionMeta}>
+                  {stats.ratingCount} lượt đánh giá · Xem danh sách →
+                </Text>
+                <Text style={styles.satisfactionMeta}>
+                  {stats.highRatingPercent}% đánh giá 4–5 sao
+                </Text>
+              </Pressable>
+
+              <View style={styles.priorityList}>
+                {[5, 4, 3, 2, 1].map((star) => (
+                  <Pressable
+                    key={star}
+                    style={styles.priorityRow}
+                    onPress={() =>
+                      router.push({ pathname: "/ratings", params: { star: String(star) } })
+                    }
+                  >
+                    <View style={styles.priorityRowLeft}>
+                      <Text style={styles.starRowLabel}>
+                        {"★".repeat(star)}
+                        {"☆".repeat(5 - star)}
+                      </Text>
+                    </View>
+                    <Text style={styles.priorityValue}>{stats.ratingStarCounts[star]}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </>
+          ) : (
+            <View style={styles.satisfactionCard}>
+              <Text style={styles.satisfactionMeta}>Chưa có đánh giá nào từ khách hàng.</Text>
+            </View>
+          )}
         </>
-      ) : (
-        <View style={styles.satisfactionCard}>
-          <Text style={styles.satisfactionMeta}>Chưa có đánh giá nào từ khách hàng.</Text>
-        </View>
       )}
     </ScrollView>
   );
@@ -227,6 +264,17 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: 20, paddingBottom: 32 },
   title: { fontSize: 24, fontWeight: "700", color: "#111827" },
   subtitle: { marginTop: 4, fontSize: 13, color: "#6B7280" },
+  tabBar: {
+    flexDirection: "row",
+    marginTop: 16,
+    padding: 4,
+    borderRadius: 12,
+    backgroundColor: "#E5E7EB",
+  },
+  tabItem: { flex: 1, paddingVertical: 8, borderRadius: 9, alignItems: "center" },
+  tabItemActive: { backgroundColor: "#FFFFFF" },
+  tabText: { fontSize: 13, fontWeight: "600", color: "#6B7280" },
+  tabTextActive: { color: "#111827" },
   statRow: { flexDirection: "row", gap: 12, marginTop: 20 },
   statRowSecond: { marginTop: 12 },
   statCard: { flex: 1, borderRadius: 16, padding: 16 },

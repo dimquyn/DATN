@@ -1,6 +1,13 @@
-import { doc, getDoc } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  getDoc,
+  onSnapshot,
+  type FirestoreError,
+  type Unsubscribe,
+} from "firebase/firestore";
 import { db } from "../firebase";
-import type { AIResult } from "../types/ai-result";
+import type { AICategory, AIResult } from "../types/ai-result";
 
 const AI_RESULTS_COLLECTION = "ai_results";
 
@@ -30,4 +37,26 @@ export async function getAIResultById(aiResultId: string): Promise<AIResult | nu
     reply: data.reply,
     analyzedAt: data.analyzedAt ?? null,
   };
+}
+/**
+ * Lắng nghe nhóm khiếu nại (category) của mọi kết quả AI, trả về map
+ * ticketId -> category — dùng cho báo cáo quản lý ở màn Tổng quan (admin),
+ * vì category chỉ lưu trong ai_results, không lưu trên ticket.
+ */
+export function subscribeToAICategories(
+  onData: (categories: Record<string, AICategory>) => void,
+  onError: (error: FirestoreError) => void
+): Unsubscribe {
+  return onSnapshot(
+    collection(db, AI_RESULTS_COLLECTION),
+    (snapshot) => {
+      const categories: Record<string, AICategory> = {};
+      for (const docSnap of snapshot.docs) {
+        const data = docSnap.data();
+        if (data.ticketId && data.category) categories[data.ticketId] = data.category;
+      }
+      onData(categories);
+    },
+    onError
+  );
 }

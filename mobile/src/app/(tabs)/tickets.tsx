@@ -13,16 +13,18 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FullScreenLoading } from "../../components/common/FullScreenLoading";
 import { TicketCard } from "../../components/cards/TicketCard";
 import { useAuth } from "../../contexts/AuthContext";
-import { subscribeToTickets } from "../../services/ticket.service";
+import { isAwaitingAdmin, subscribeToTickets } from "../../services/ticket.service";
 import { AI_PRIORITY_LABELS } from "../../constants/ai-priority";
 import { isTicketOverdue } from "../../utils/ticket-sla";
 import type { Ticket } from "../../types/ticket";
 import type { AIPriority } from "../../types/ai-result";
 
-type FilterKey = "all" | "new" | "in_progress" | "overdue" | "closed";
+type FilterKey = "all" | "escalated" | "new" | "in_progress" | "overdue" | "closed";
 
-const FILTERS: { key: FilterKey; label: string }[] = [
+const FILTERS: { key: FilterKey; label: string; adminOnly?: boolean }[] = [
   { key: "all", label: "Tất cả" },
+  // Hàng chờ của quản trị viên: ticket nhân viên đã chuyển lên, chưa ai nhận.
+  { key: "escalated", label: "Chờ quản trị viên", adminOnly: true },
   { key: "new", label: "Mới" },
   { key: "in_progress", label: "Đang xử lý" },
   { key: "overdue", label: "Quá hạn" },
@@ -48,6 +50,7 @@ function resolvePriorityParam(value: unknown): AIPriority | null {
 
 function matchesFilter(ticket: Ticket, filter: FilterKey): boolean {
   if (filter === "all") return true;
+  if (filter === "escalated") return isAwaitingAdmin(ticket);
   if (filter === "new") return ticket.status === "pending" || ticket.status === "ai_analyzed";
   if (filter === "in_progress") return ticket.status === "in_progress";
   if (filter === "overdue") return isTicketOverdue(ticket);
@@ -57,11 +60,20 @@ function matchesFilter(ticket: Ticket, filter: FilterKey): boolean {
 export default function TicketsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { user } = useAuth();
-  const { filter: filterParam, priority: priorityParam, mine: mineParam } = useLocalSearchParams<{
+  const { user, isAdmin } = useAuth();
+  const {
+    filter: filterParam,
+    priority: priorityParam,
+    mine: mineParam,
+    assignee: assigneeParam,
+    assigneeName: assigneeNameParam,
+  } = useLocalSearchParams<{
     filter?: string;
     priority?: string;
     mine?: string;
+    /** UID nhân viên — admin xem ticket của 1 nhân viên (từ báo cáo / quản lý nhân viên). */
+    assignee?: string;
+    assigneeName?: string;
   }>();
 
   const [tickets, setTickets] = useState<Ticket[]>([]);
@@ -76,6 +88,13 @@ export default function TicketsScreen() {
   // "Xóa lọc" riêng, để đổi filter trạng thái không vô tình bỏ luôn phạm vi
   // "của tôi" mà người dùng đang muốn xem.
   const [mineOnly, setMineOnly] = useState<boolean>(mineParam === "1");
+  // Admin xem ticket đang/đã giao cho 1 nhân viên cụ thể. Giống mineOnly:
+  // độc lập với bộ lọc trạng thái, chỉ tắt khi bấm "Xóa lọc" riêng.
+  const [assigneeFilter, setAssigneeFilter] = useState<{ uid: string; name: string } | null>(
+    typeof assigneeParam === "string" && assigneeParam
+      ? { uid: assigneeParam, name: assigneeNameParam ?? assigneeParam }
+      : null
+  );
 
   // Cho phép Tổng quan điều hướng tới đây kèm sẵn bộ lọc (vd bấm thẻ "Ticket mới"
   // hoặc bấm 1 dòng mức độ ưu tiên). 2 bộ lọc này độc lập nhau — chỉ nên áp
@@ -95,7 +114,13 @@ export default function TicketsScreen() {
     if (mineParam === "1") {
       setMineOnly(true);
     }
-  }, [filterParam, priorityParam, mineParam]);
+
+    if (typeof assigneeParam === "string" && assigneeParam) {
+      setAssigneeFilter({ uid: assigneeParam, name: assigneeNameParam ?? assigneeParam });
+      setMineOnly(false);
+      if (!isFilterKey(filterParam)) setFilter("all");
+    }
+  }, [filterParam, priorityParam, mineParam, assigneeParam, assigneeNameParam]);
 
   useEffect(() => {
     setLoading(true);
@@ -124,12 +149,13 @@ export default function TicketsScreen() {
       if (!matchesFilter(ticket, filter)) return false;
       if (priorityFilter && ticket.priority !== priorityFilter) return false;
       if (mineOnly && ticket.assignedTo !== user?.uid) return false;
+      if (assigneeFilter && ticket.assignedTo !== assigneeFilter.uid) return false;
       if (!keyword) return true;
 
       const haystack = `${ticket.code ?? ""} ${ticket.customerName ?? ""} ${ticket.content ?? ""}`.toLowerCase();
       return haystack.includes(keyword);
     });
-  }, [tickets, filter, priorityFilter, mineOnly, user?.uid, searchText]);
+  }, [tickets, filter, priorityFilter, mineOnly, assigneeFilter, user?.uid, searchText]);
 
   return (
     <View style={styles.screen}>
@@ -152,7 +178,7 @@ export default function TicketsScreen() {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.filterRow}
         >
-          {FILTERS.map((item) => {
+          {FILTERS.filter((item) => !item.adminOnly || isAdmin).map((item) => {
             const active = item.key === filter;
             return (
               <Text
@@ -175,6 +201,17 @@ export default function TicketsScreen() {
               Đang lọc theo mức độ ưu tiên: {AI_PRIORITY_LABELS[priorityFilter]}
             </Text>
             <Pressable onPress={() => setPriorityFilter(null)} hitSlop={8}>
+              <Text style={styles.priorityFilterClear}>Xóa lọc ✕</Text>
+            </Pressable>
+          </View>
+        )}
+
+        {assigneeFilter && (
+          <View style={styles.priorityFilterRow}>
+            <Text style={styles.priorityFilterText} numberOfLines={1}>
+              Ticket của nhân viên: {assigneeFilter.name}
+            </Text>
+            <Pressable onPress={() => setAssigneeFilter(null)} hitSlop={8}>
               <Text style={styles.priorityFilterClear}>Xóa lọc ✕</Text>
             </Pressable>
           </View>

@@ -16,14 +16,20 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../contexts/AuthContext";
 import { FullScreenLoading } from "../../components/common/FullScreenLoading";
 import {
+  escalateTicket,
   getTicketById,
+  isAwaitingAdmin,
   reassignTicket,
   subscribeToTicket,
   updateTicketStatus,
 } from "../../services/ticket.service";
 import { subscribeToStaffList } from "../../services/staff.service";
 import { getAIResultById } from "../../services/ai-result.service";
-import { getNextTicketAction, getTicketStatusLabel } from "../../constants/ticket-status";
+import {
+  getNextTicketAction,
+  getTicketStatusLabel,
+  type TicketStatusAction,
+} from "../../constants/ticket-status";
 import { formatTicketDate } from "../../utils/format-ticket-date";
 import { getDisplayTicketCode } from "../../utils/ticket-code";
 import { AI_PRIORITY_LABELS, AI_PRIORITY_STYLES } from "../../constants/ai-priority";
@@ -62,6 +68,12 @@ export default function TicketDetailScreen() {
   const [reassignTarget, setReassignTarget] = useState<StaffProfile | null>(null);
   const [reassigning, setReassigning] = useState<boolean>(false);
   const [reassignError, setReassignError] = useState<string | null>(null);
+
+  // Chuyển cho quản trị viên (nhân viên đang xử lý, ticket in_progress)
+  const [showEscalate, setShowEscalate] = useState<boolean>(false);
+  const [escalateNote, setEscalateNote] = useState<string>("");
+  const [escalating, setEscalating] = useState<boolean>(false);
+  const [escalateError, setEscalateError] = useState<string | null>(null);
 
   // Cuộn ô "Phản hồi đề xuất" lên trên bàn phím khi được focus, giống app nhắn tin.
   // Đo qua scrollContainerRef (View bọc ngoài) vì ScrollView không có sẵn measureInWindow.
@@ -176,10 +188,22 @@ export default function TicketDetailScreen() {
     }
   }, [aiResult, ticket?.status, replyDraftInitialized]);
 
+  // Hành động chung kế tiếp theo vai trò: nhân viên nhận ticket mới; quản
+  // trị viên KHÔNG nhận ticket mới, chỉ nhận ticket được chuyển lên (khớp
+  // firestore.rules). Đóng khiếu nại giữ nguyên như cũ.
+  const resolveAction = (current: Ticket): TicketStatusAction | null => {
+    if (isAwaitingAdmin(current)) {
+      return isAdmin ? { nextStatus: "in_progress", label: "Nhận xử lý ticket được chuyển lên" } : null;
+    }
+    const next = getNextTicketAction(current.status, !!current.lastAIError);
+    if (next?.nextStatus === "in_progress" && isAdmin) return null;
+    return next;
+  };
+
   const handleAction = async () => {
     if (!user || !ticket || updating) return;
 
-    const action = getNextTicketAction(ticket.status, !!ticket.lastAIError);
+    const action = resolveAction(ticket);
     if (!action) return;
 
     setUpdating(true);
@@ -217,7 +241,11 @@ export default function TicketDetailScreen() {
         err.code === "permission-denied" &&
         action.nextStatus === "in_progress"
       ) {
-        setUpdateError("Ticket này vừa được nhân viên khác nhận xử lý.");
+        setUpdateError(
+          isAdmin
+            ? "Ticket này vừa được quản trị viên khác nhận xử lý."
+            : "Ticket này vừa được nhân viên khác nhận xử lý."
+        );
         const latest = await getTicketById(ticket.id).catch(() => null);
         if (latest) setTicket(latest);
       } else {
@@ -260,6 +288,36 @@ export default function TicketDetailScreen() {
       setConfirmReplyError("Không thể xác nhận phản hồi. Vui lòng thử lại.");
     } finally {
       setConfirmingReply(false);
+    }
+  };
+
+  const handleEscalate = async () => {
+    if (!user || !ticket || escalating) return;
+    if (ticket.status !== "in_progress" || ticket.assignedTo !== user.uid) return;
+
+    const note = escalateNote.trim();
+    if (note.length === 0) {
+      setEscalateError("Vui lòng nhập lý do chuyển cho quản trị viên.");
+      return;
+    }
+
+    setEscalating(true);
+    setEscalateError(null);
+
+    try {
+      await escalateTicket(ticket.id, {
+        note: note.slice(0, 500),
+        actorName: user.email ?? "Nhân viên",
+        actorUid: user.uid,
+        ticketCode: ticket.code,
+      });
+      setShowEscalate(false);
+      setEscalateNote("");
+    } catch (err) {
+      console.error("Lỗi khi chuyển ticket cho quản trị viên:", err);
+      setEscalateError("Không thể chuyển ticket. Vui lòng thử lại.");
+    } finally {
+      setEscalating(false);
     }
   };
 
@@ -323,6 +381,12 @@ export default function TicketDetailScreen() {
   // đóng khiếu nại — nhân viên khác chỉ xem (firestore.rules cũng chặn tương tự).
   const isAssignedToMe = !!ticket?.assignedTo && ticket.assignedTo === user.uid;
   const isAssignedToOther = !!ticket?.assignedTo && ticket.assignedTo !== user.uid;
+  const awaitingAdmin = !!ticket && isAwaitingAdmin(ticket);
+  // Người nhận khi chuyển: chỉ nhân viên thường đang hoạt động (admin không
+  // tự giao ticket cho mình — firestore.rules cũng chặn).
+  const reassignCandidates = staffList.filter(
+    (staff) => staff.active && staff.role === "staff" && staff.uid !== ticket?.assignedTo
+  );
 
   return (
     <View style={styles.screen}>
@@ -430,6 +494,19 @@ export default function TicketDetailScreen() {
                   }
                   isLast
                 />
+              </View>
+            )}
+
+            {/* Thông tin chuyển lên quản trị viên */}
+            {ticket.escalated && (
+              <View style={[styles.card, awaitingAdmin ? styles.escalatedCard : null]}>
+                <Text style={styles.sectionTitle}>CHUYỂN LÊN QUẢN TRỊ VIÊN</Text>
+                <InfoRow label="NGƯỜI CHUYỂN" value={ticket.escalatedByName ?? "Nhân viên"} />
+                <InfoRow label="THỜI GIAN" value={formatTicketDate(ticket.escalatedAt)} />
+                <InfoRow label="LÝ DO" value={ticket.escalationNote || "Không ghi lý do"} isLast />
+                {awaitingAdmin && (
+                  <Text style={styles.escalatedHint}>Đang chờ quản trị viên tiếp nhận.</Text>
+                )}
               </View>
             )}
 
@@ -555,6 +632,10 @@ export default function TicketDetailScreen() {
                           <Text style={styles.hintText}>
                             {isAssignedToOther
                               ? "Ticket này đang do nhân viên khác xử lý."
+                              : awaitingAdmin
+                              ? "Ticket đang chờ quản trị viên tiếp nhận."
+                              : isAdmin
+                              ? "Quản trị viên chỉ xử lý ticket được nhân viên chuyển lên."
                               : "Nhận xử lý ticket trước khi phản hồi."}
                           </Text>
                         )}
@@ -588,6 +669,66 @@ export default function TicketDetailScreen() {
               </View>
             )}
 
+            {/* Chuyển cho quản trị viên — nhân viên đang xử lý không tự giải quyết được */}
+            {!isAdmin && ticket.status === "in_progress" && isAssignedToMe && (
+              <View style={styles.card}>
+                {!showEscalate ? (
+                  <Pressable
+                    onPress={() => {
+                      setShowEscalate(true);
+                      setEscalateError(null);
+                    }}
+                    style={styles.secondaryButton}
+                  >
+                    <Text style={styles.secondaryButtonText}>Chuyển cho quản trị viên</Text>
+                  </Pressable>
+                ) : (
+                  <>
+                    <Text style={styles.sectionTitle}>CHUYỂN CHO QUẢN TRỊ VIÊN</Text>
+                    <Text style={styles.hintText}>
+                      Ticket sẽ vào hàng chờ của quản trị viên và bạn không còn là người xử lý.
+                    </Text>
+                    <TextInput
+                      style={styles.escalateInput}
+                      multiline
+                      maxLength={500}
+                      value={escalateNote}
+                      onChangeText={setEscalateNote}
+                      placeholder="Lý do chuyển (bắt buộc), ví dụ: cần phê duyệt hoàn cước"
+                      placeholderTextColor="#9CA3AF"
+                      editable={!escalating}
+                    />
+                    {escalateError && <Text style={styles.actionErrorText}>{escalateError}</Text>}
+                    <Pressable
+                      onPress={handleEscalate}
+                      disabled={escalating || escalateNote.trim().length === 0}
+                      style={[
+                        styles.actionButton,
+                        styles.reassignConfirmButton,
+                        escalating || escalateNote.trim().length === 0 ? styles.actionButtonDisabled : null,
+                      ]}
+                    >
+                      {escalating ? (
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                      ) : (
+                        <Text style={styles.actionButtonText}>Xác nhận chuyển</Text>
+                      )}
+                    </Pressable>
+                    <Pressable
+                      onPress={() => {
+                        setShowEscalate(false);
+                        setEscalateNote("");
+                      }}
+                      disabled={escalating}
+                      style={styles.cancelLink}
+                    >
+                      <Text style={styles.cancelLinkText}>Hủy</Text>
+                    </Pressable>
+                  </>
+                )}
+              </View>
+            )}
+
             {/* Chuyển người xử lý — chỉ admin, khi ticket đang được xử lý */}
             {isAdmin && ticket.status === "in_progress" && (
               <View style={styles.card}>
@@ -601,12 +742,13 @@ export default function TicketDetailScreen() {
                     }}
                     style={styles.secondaryButton}
                   >
-                    <Text style={styles.secondaryButtonText}>Chuyển cho nhân viên khác</Text>
+                    <Text style={styles.secondaryButtonText}>
+                      {awaitingAdmin ? "Giao cho nhân viên" : "Chuyển cho nhân viên khác"}
+                    </Text>
                   </Pressable>
                 ) : (
                   <>
-                    {staffList
-                      .filter((staff) => staff.active && staff.uid !== ticket.assignedTo)
+                    {reassignCandidates
                       .map((staff) => {
                         const selected = reassignTarget?.uid === staff.uid;
                         return (
@@ -618,14 +760,13 @@ export default function TicketDetailScreen() {
                           >
                             <Text style={styles.staffOptionName}>
                               {staff.displayName || staff.email}
-                              {staff.role === "admin" ? " (Admin)" : ""}
                             </Text>
                             <Text style={styles.staffOptionEmail}>{staff.email}</Text>
                           </Pressable>
                         );
                       })}
 
-                    {staffList.filter((s) => s.active && s.uid !== ticket.assignedTo).length === 0 && (
+                    {reassignCandidates.length === 0 && (
                       <Text style={styles.pendingText}>Không có nhân viên nào khác đang hoạt động.</Text>
                     )}
 
@@ -663,9 +804,18 @@ export default function TicketDetailScreen() {
 
             {/* Hành động Nhận xử lý / Đóng khiếu nại (Sprint 4) */}
             {(() => {
-              const action = getNextTicketAction(ticket.status, aiFailed);
+              const action = resolveAction(ticket);
 
               if (!action) {
+                if (isAdmin && getNextTicketAction(ticket.status, aiFailed)?.nextStatus === "in_progress") {
+                  return (
+                    <View style={styles.card}>
+                      <Text style={styles.pendingText}>
+                        Quản trị viên không trực tiếp nhận ticket mới. Nhân viên xử lý và chuyển lên khi cần hỗ trợ.
+                      </Text>
+                    </View>
+                  );
+                }
                 return null;
               }
 
@@ -755,6 +905,20 @@ const MAX_CONTENT_WIDTH = 820;
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: "#F7F8FA" },
+  escalatedCard: { borderColor: "#FCA5A5", backgroundColor: "#FEF2F2" },
+  escalatedHint: { marginTop: 10, fontSize: 13, fontWeight: "700", color: "#B91C1C" },
+  escalateInput: {
+    marginTop: 10,
+    minHeight: 80,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    borderRadius: 10,
+    padding: 12,
+    fontSize: 14,
+    color: "#111827",
+    backgroundColor: "#FFFFFF",
+    textAlignVertical: "top",
+  },
   keyboardAvoider: { flex: 1 },
   header: {
     flexDirection: "row",

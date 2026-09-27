@@ -67,6 +67,13 @@ Mobile App (React Native)
 - Hiển thị kết quả AI
 - Nhận xử lý
 - Cập nhật trạng thái
+- Chuyển ticket cho quản trị viên khi không tự xử lý được (kèm lý do)
+
+### Quản trị viên (Admin)
+- Màn **Tổng quan** có tab **Báo cáo quản lý**: thời gian phản hồi/xử lý trung bình, tỉ lệ đúng hạn SLA, số liệu theo từng nhân viên và theo nhóm khiếu nại (lọc 7 ngày / 30 ngày / tất cả)
+- Bấm 1 nhân viên (trong báo cáo hoặc màn Quản lý nhân viên) để xem danh sách ticket của người đó, rồi mở chi tiết / lịch sử xử lý
+- Không nhận ticket mới — chỉ nhận các ticket nhân viên đã chuyển lên (bộ lọc **Chờ quản trị viên**)
+- Chuyển ticket giữa các nhân viên, quản lý tài khoản nhân viên
 
 ---
 ## Cấu trúc dự án
@@ -91,8 +98,9 @@ npm run dev
 ```
 
 ### Firebase Emulator
+Chạy ở thư mục gốc dự án — bật đủ Auth (9099), Firestore (8080), Functions (5001) và giao diện UI (9150):
 ```bash
-firebase emulators:start --only firestore,functions
+firebase emulators:start
 ```
 // netstat -ano | findstr :8080 
 // taskkill /PID ... /F

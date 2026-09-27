@@ -88,10 +88,15 @@ async function seedTicket(data) {
   return id;
 }
 
+// Mốc thời gian đi kèm từng bước chuyển, giống STATUS_TO_TIMESTAMP_FIELD ở mobile.
+const STATUS_TIMESTAMP = { in_progress: "claimedAt", responded: "respondedAt", closed: "closedAt" };
+
 /** Cập nhật ticket + ghi lịch sử trong cùng batch như mobile/src/services/ticket.service.ts. */
 function updateWithHistory(db, ticketId, updates, action, actorUid, historyOverrides = {}) {
   const batch = writeBatch(db);
-  batch.update(doc(db, "tickets", ticketId), { ...updates, updatedAt: serverTimestamp() });
+  const field = STATUS_TIMESTAMP[updates.status];
+  const stamped = field && !(field in updates) ? { [field]: serverTimestamp(), ...updates } : updates;
+  batch.update(doc(db, "tickets", ticketId), { ...stamped, updatedAt: serverTimestamp() });
   batch.set(doc(collection(db, "tickets", ticketId, "history")), {
     ticketId,
     ticketCode: "TK99",
@@ -239,6 +244,27 @@ test("luồng xử lý: chỉ người nhận mới phản hồi/đóng, kèm đ
   await assertSucceeds(updateWithHistory(staffA, id, { status: "closed" }, "closed", "staffA"));
 });
 
+test("mốc thời gian xử lý bắt buộc và phải là giờ server", async () => {
+  const id = await seedTicket({ status: "ai_analyzed" });
+  const past = Timestamp.fromMillis(Date.now() - 60 * 60 * 1000);
+  // Thiếu claimedAt hoặc tự đặt giờ trong quá khứ đều bị từ chối
+  await assertFails(
+    updateWithHistory(staffA, id, { status: "in_progress", assignedTo: "staffA", claimedAt: null }, "claimed", "staffA")
+  );
+  await assertFails(
+    updateWithHistory(staffA, id, { status: "in_progress", assignedTo: "staffA", claimedAt: past }, "claimed", "staffA")
+  );
+  await assertSucceeds(
+    updateWithHistory(staffA, id, { status: "in_progress", assignedTo: "staffA" }, "claimed", "staffA")
+  );
+  await assertFails(
+    updateWithHistory(staffA, id, { status: "responded", finalReply: "x", respondedAt: past }, "responded", "staffA")
+  );
+  await assertSucceeds(updateWithHistory(staffA, id, { status: "responded", finalReply: "x" }, "responded", "staffA"));
+  await assertFails(updateWithHistory(staffA, id, { status: "closed", closedAt: past }, "closed", "staffA"));
+  await assertSucceeds(updateWithHistory(staffA, id, { status: "closed" }, "closed", "staffA"));
+});
+
 test("nhận xử lý ticket AI lỗi (pending + lastAIError)", async () => {
   const id = await seedTicket({ status: "pending", lastAIError: "quota" });
   await assertSucceeds(
@@ -279,6 +305,48 @@ test("admin chuyển người xử lý; nhân viên thường không chuyển đ
   await assertSucceeds(updateWithHistory(staffB, id, { status: "responded", finalReply: "x" }, "responded", "staffB"));
   await assertFails(reassign(admin, "admin1", "staffA")); // đã responded
   await assertSucceeds(updateWithHistory(admin, id, { status: "closed" }, "closed", "admin1"));
+});
+
+test("admin không nhận ticket mới; nhân viên chuyển lên, chỉ admin nhận ticket đó", async () => {
+  const id = await seedTicket({ status: "ai_analyzed" });
+  const claim = (db, uid) =>
+    updateWithHistory(db, id, { status: "in_progress", assignedTo: uid, assignedToName: uid }, "claimed", uid);
+  const escalation = (uid, extra = {}) => ({
+    assignedTo: null,
+    assignedToName: null,
+    escalated: true,
+    escalatedBy: uid,
+    escalatedByName: `${uid}@cskh.vn`,
+    escalationNote: "Cần phê duyệt hoàn cước",
+    escalatedAt: serverTimestamp(),
+    ...extra,
+  });
+
+  await assertFails(claim(admin, "admin1"));
+  await assertSucceeds(claim(staffA, "staffA"));
+  // Không có lý do, hoặc nhân viên không phải người xử lý: bị từ chối
+  await assertFails(updateWithHistory(staffA, id, escalation("staffA", { escalationNote: "  " }), "escalated", "staffA"));
+  await assertFails(updateWithHistory(staffB, id, escalation("staffB"), "escalated", "staffB"));
+  await assertSucceeds(updateWithHistory(staffA, id, escalation("staffA"), "escalated", "staffA"));
+  // Ticket đang chờ admin: nhân viên khác không nhận được, người cũ không phản hồi được
+  await assertFails(claim(staffB, "staffB"));
+  await assertFails(updateWithHistory(staffA, id, { status: "responded", finalReply: "x" }, "responded", "staffA"));
+  // Admin nhận rồi tự phản hồi, đóng
+  await assertSucceeds(claim(admin, "admin1"));
+  // Quản trị viên thứ hai không nhận chồng khi đã có người nhận
+  await env.withSecurityRulesDisabled((ctx) =>
+    setDoc(doc(ctx.firestore(), "staff", "admin2"), { email: "admin2@cskh.vn", role: "admin", active: true })
+  );
+  await assertFails(claim(env.authenticatedContext("admin2").firestore(), "admin2"));
+  await assertSucceeds(updateWithHistory(admin, id, { status: "responded", finalReply: "Đã hoàn cước" }, "responded", "admin1"));
+  await assertSucceeds(updateWithHistory(admin, id, { status: "closed" }, "closed", "admin1"));
+});
+
+test("admin không tự giao ticket đang xử lý cho chính mình", async () => {
+  const id = await seedTicket({ status: "in_progress", assignedTo: "staffA", assignedToName: "a" });
+  await assertFails(
+    updateWithHistory(admin, id, { assignedTo: "admin1", assignedToName: "admin" }, "reassigned", "admin1")
+  );
 });
 
 test("ai_results chỉ Cloud Functions ghi", async () => {

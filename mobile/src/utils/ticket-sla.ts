@@ -16,6 +16,11 @@ function toDate(value: Timestamp | null): Date | null {
   return value.toDate();
 }
 
+/** Hạn xử lý (giờ) của ticket theo mức độ ưu tiên AI. */
+export function getSlaHours(ticket: Ticket): number {
+  return ticket.priority ? SLA_HOURS[ticket.priority] : SLA_HOURS.default;
+}
+
 /** Ticket đã đóng thì không còn tính quá hạn nữa. */
 export function isTicketOverdue(ticket: Ticket): boolean {
   if (ticket.status === "closed") return false;
@@ -23,8 +28,7 @@ export function isTicketOverdue(ticket: Ticket): boolean {
   const createdAt = toDate(ticket.createdAt);
   if (!createdAt) return false;
 
-  const slaHours = ticket.priority ? SLA_HOURS[ticket.priority] : SLA_HOURS.default;
-  const deadline = createdAt.getTime() + slaHours * 60 * 60 * 1000;
+  const deadline = createdAt.getTime() + getSlaHours(ticket) * 60 * 60 * 1000;
 
   return Date.now() > deadline;
 }

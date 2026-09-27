@@ -3,8 +3,9 @@ import type { TicketHistoryAction } from "../types/ticket-history";
 export const TICKET_HISTORY_LABELS: Record<TicketHistoryAction, string> = {
   created: "Ticket được tạo",
   ai_analyzed: "AI phân tích hoàn tất",
-  claimed: "Nhân viên tiếp nhận",
+  claimed: "Tiếp nhận xử lý",
   reassigned: "Quản trị viên chuyển người xử lý",
+  escalated: "Chuyển lên quản trị viên",
   responded: "Đã gửi phản hồi khách hàng",
   closed: "Ticket đóng",
   rated: "Khách hàng đánh giá",
@@ -23,6 +24,7 @@ export const TICKET_HISTORY_DOT_COLORS: Record<TicketHistoryAction, string> = {
   ai_analyzed: "#3B82F6",
   claimed: "#F97316",
   reassigned: "#8B5CF6",
+  escalated: "#DC2626",
   responded: "#F97316",
   closed: "#10B981",
   rated: "#EAB308",

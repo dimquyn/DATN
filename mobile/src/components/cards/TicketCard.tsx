@@ -5,6 +5,7 @@ import { AI_PRIORITY_LABELS, AI_PRIORITY_STYLES } from "../../constants/ai-prior
 import { formatRelativeTicketTime } from "../../utils/format-ticket-date";
 import { getDisplayTicketCode } from "../../utils/ticket-code";
 import { isTicketOverdue } from "../../utils/ticket-sla";
+import { isAwaitingAdmin } from "../../services/ticket.service";
 
 interface TicketCardProps {
   ticket: Ticket;
@@ -18,6 +19,7 @@ export function TicketCard({ ticket, onPress }: TicketCardProps) {
   const statusLabel = getTicketStatusLabel(ticket.status);
   const priorityStyle = ticket.priority ? AI_PRIORITY_STYLES[ticket.priority] : null;
   const overdue = isTicketOverdue(ticket);
+  const awaitingAdmin = isAwaitingAdmin(ticket);
 
   return (
     <Pressable
@@ -55,7 +57,14 @@ export function TicketCard({ ticket, onPress }: TicketCardProps) {
         </View>
         <Text style={styles.name} numberOfLines={1}>
           {displayName}
+          {ticket.assignedToName ? ` · ${ticket.assignedToName}` : ""}
         </Text>
+
+        {awaitingAdmin && (
+          <View style={styles.escalatedBadge}>
+            <Text style={styles.overdueBadgeText}>⬆ Chờ quản trị viên</Text>
+          </View>
+        )}
 
         <View style={styles.footerRow}>
           <Text style={styles.time}>Cập nhật: {displayTime}</Text>
@@ -118,6 +127,14 @@ const styles = StyleSheet.create({
     borderColor: "#EF4444",
   },
   overdueBadgeText: { fontSize: 10, fontWeight: "700", color: "#B91C1C" },
+  escalatedBadge: {
+    alignSelf: "flex-start",
+    marginTop: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    backgroundColor: "#FEE2E2",
+  },
   name: { marginTop: 2, fontSize: 13, color: "#6B7280" },
   footerRow: {
     marginTop: 10,

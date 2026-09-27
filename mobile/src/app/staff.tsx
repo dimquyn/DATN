@@ -266,6 +266,19 @@ export default function StaffManagementScreen() {
                   </View>
                 </View>
 
+                <Pressable
+                  onPress={() =>
+                    router.push({
+                      pathname: "/tickets",
+                      params: { assignee: staff.uid, assigneeName: staff.displayName || staff.email },
+                    })
+                  }
+                  style={styles.viewTicketsLink}
+                  hitSlop={6}
+                >
+                  <Text style={styles.viewTicketsText}>Xem ticket của nhân viên này →</Text>
+                </Pressable>
+
                 {/* Không cho tự khóa/tự hạ quyền chính mình (Cloud Function cũng chặn). */}
                 {!isSelf && (
                   <View style={styles.actionsRow}>
@@ -393,6 +406,8 @@ const styles = StyleSheet.create({
   badgeActive: { backgroundColor: "#ECFDF5", color: "#047857" },
   badgeLocked: { backgroundColor: "#FEF2F2", color: "#B91C1C" },
   actionsRow: { flexDirection: "row", gap: 8, marginTop: 12 },
+  viewTicketsLink: { marginTop: 10, alignSelf: "flex-start" },
+  viewTicketsText: { fontSize: 13, fontWeight: "700", color: "#1667B1" },
   outlineButton: {
     flex: 1,
     height: 38,

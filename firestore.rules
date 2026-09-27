@@ -20,9 +20,10 @@ service cloud.firestore {
       return request.auth != null && isActiveStaff(request.auth.uid);
     }
 
-    // Quản trị viên: nhân viên hợp lệ có role == "admin". Ngoài quyền của
-    // nhân viên, admin được chuyển ticket sang nhân viên khác, đóng ticket
-    // của bất kỳ ai và quản lý tài khoản nhân viên.
+    // Quản trị viên: nhân viên hợp lệ có role == "admin". Admin không nhận
+    // ticket mới như nhân viên — chỉ xử lý ticket được nhân viên chuyển lên;
+    // ngoài ra được chuyển ticket sang nhân viên khác, đóng ticket của bất
+    // kỳ ai và quản lý tài khoản nhân viên.
     function isAdmin() {
       return isStaff() && get(staffPath(request.auth.uid)).data.role == 'admin';
     }
@@ -73,6 +74,9 @@ service cloud.firestore {
 
     // Nhân viên chỉ được đổi trạng thái/người xử lý/phản hồi cuối cùng theo
     // đúng 1 trong 3 bước chuyển hợp lệ (khớp luồng ở Ticket Detail) —
+    // mỗi bước ghi kèm mốc thời gian (claimedAt/respondedAt/closedAt) bằng
+    // giờ server để thống kê thời gian xử lý cho quản trị viên không bị làm
+    // giả —
     // không được sửa nội dung gốc của khách hàng hay giả mạo kết quả AI
     // (aiResultId, priority, lastAIError chỉ do Cloud Functions ghi qua
     // Admin SDK, vốn không đi qua rules này).
@@ -92,13 +96,41 @@ service cloud.firestore {
           // race condition khi 2 nhân viên cùng bấm "Nhận xử lý" 1 lúc — ai
           // commit trước sẽ khiến request của người còn lại bị từ chối vì
           // lúc đó resource.data.assignedTo không còn null nữa.
+          // Quản trị viên không nhận ticket mới — chỉ nhận các ticket đã được
+          // nhân viên "Chuyển cho quản trị viên" (escalated, đang chờ người nhận).
           (
-            changedKeys.hasOnly(['status', 'assignedTo', 'assignedToName', 'updatedAt'])
-            && (before.status == 'ai_analyzed' || (before.status == 'pending' && 'lastAIError' in before))
+            changedKeys.hasOnly(['status', 'assignedTo', 'assignedToName', 'claimedAt', 'updatedAt'])
+            && after.claimedAt == request.time
             && before.assignedTo == null
             && after.status == 'in_progress'
             && after.assignedTo == request.auth.uid
             && (!('assignedToName' in after) || after.assignedToName is string)
+            && (
+              (!isAdmin()
+                && (before.status == 'ai_analyzed' || (before.status == 'pending' && 'lastAIError' in before)))
+              || (isAdmin() && before.status == 'in_progress' && before.get('escalated', false) == true)
+            )
+          )
+          // "Chuyển cho quản trị viên": nhân viên đang xử lý không tự giải
+          // quyết được thì trả ticket về hàng chờ chung của quản trị viên
+          // (assignedTo = null, escalated = true) kèm lý do. Trạng thái giữ
+          // nguyên in_progress; quản trị viên nhận qua nhánh "Nhận xử lý".
+          || (
+            !isAdmin()
+            && changedKeys.hasOnly([
+                'assignedTo', 'assignedToName', 'escalated', 'escalatedBy',
+                'escalatedByName', 'escalationNote', 'escalatedAt', 'updatedAt'
+              ])
+            && before.status == 'in_progress'
+            && before.assignedTo == request.auth.uid
+            && after.assignedTo == null
+            && after.assignedToName == null
+            && after.escalated == true
+            && after.escalatedBy == request.auth.uid
+            && after.escalatedByName is string && after.escalatedByName.size() <= 300
+            && after.escalationNote is string
+            && after.escalationNote.trim().size() > 0 && after.escalationNote.size() <= 500
+            && after.escalatedAt == request.time
           )
           // "Xác nhận đã phản hồi": in_progress -> responded, kèm finalReply.
           // Hình thức liên hệ hiển thị cho nhân viên lấy thẳng từ channel
@@ -107,7 +139,8 @@ service cloud.firestore {
           // Chỉ chính nhân viên đã "Nhận xử lý" (assignedTo) mới được phản
           // hồi — nhân viên khác không thể phản hồi thay.
           || (
-            changedKeys.hasOnly(['status', 'finalReply', 'updatedAt'])
+            changedKeys.hasOnly(['status', 'finalReply', 'respondedAt', 'updatedAt'])
+            && after.respondedAt == request.time
             && before.assignedTo == request.auth.uid
             && before.status == 'in_progress'
             && after.status == 'responded'
@@ -115,10 +148,11 @@ service cloud.firestore {
             && after.finalReply.size() > 0
             && after.finalReply.size() <= 5000
           )
-          // "Đóng khiếu nại": responded -> closed, không đổi field nào khác.
+          // "Đóng khiếu nại": responded -> closed, chỉ kèm mốc closedAt.
           // Chỉ nhân viên đang xử lý ticket (hoặc admin) mới được đóng.
           || (
-            changedKeys.hasOnly(['status', 'updatedAt'])
+            changedKeys.hasOnly(['status', 'closedAt', 'updatedAt'])
+            && after.closedAt == request.time
             && (before.assignedTo == request.auth.uid || isAdmin())
             && before.status == 'responded'
             && after.status == 'closed'
@@ -126,12 +160,15 @@ service cloud.firestore {
           // "Chuyển người xử lý" (chỉ admin): ticket đang in_progress được
           // giao lại cho 1 nhân viên khác đang hoạt động — dùng khi nhân viên
           // cũ nghỉ, bị khóa tài khoản hoặc quá tải. Không đổi trạng thái.
+          // Admin không tự giao cho chính mình bằng nhánh này (muốn xử lý thì
+          // phải là ticket được chuyển lên, nhận qua nhánh "Nhận xử lý").
           || (
             isAdmin()
             && changedKeys.hasOnly(['assignedTo', 'assignedToName', 'updatedAt'])
             && before.status == 'in_progress'
             && after.assignedTo is string
             && after.assignedTo != before.assignedTo
+            && after.assignedTo != request.auth.uid
             && isActiveStaff(after.assignedTo)
             && (!('assignedToName' in after) || after.assignedToName is string)
           )
@@ -156,6 +193,8 @@ service cloud.firestore {
           || (entry.action == 'responded' && ticketAfter.status == 'responded')
           || (entry.action == 'closed' && ticketAfter.status == 'closed')
           || (entry.action == 'reassigned' && ticketAfter.status == 'in_progress' && isAdmin())
+          || (entry.action == 'escalated' && ticketAfter.status == 'in_progress'
+              && ticketAfter.assignedTo == null && ticketAfter.escalatedBy == request.auth.uid)
         );
     }
 

@@ -28,6 +28,18 @@ export interface Ticket {
   rating: number | null;
   ratingComment: string | null;
   ratedAt: Timestamp | null;
+  /** Mốc thời gian các bước xử lý — dùng cho báo cáo quản lý (thời gian
+   *  xử lý trung bình). Ticket xử lý trước khi có các trường này là null. */
+  claimedAt: Timestamp | null;
+  respondedAt: Timestamp | null;
+  closedAt: Timestamp | null;
+  /** Nhân viên đã "Chuyển cho quản trị viên" — ticket vào hàng chờ của admin
+   *  (assignedTo = null) cho tới khi 1 quản trị viên nhận xử lý. */
+  escalated: boolean;
+  escalatedBy: string | null;
+  escalatedByName: string | null;
+  escalationNote: string | null;
+  escalatedAt: Timestamp | null;
   createdAt: Timestamp | null;
   updatedAt: Timestamp | null;
   lastAIError?: string;
