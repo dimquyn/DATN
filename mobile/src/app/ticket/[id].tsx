@@ -538,7 +538,8 @@ export default function TicketDetailScreen() {
                   <FieldBlock label="PHÂN LOẠI" value={aiResult.category} />
                   <FieldBlock label="MỨC ĐỘ ƯU TIÊN" value={aiResult.priority} />
                   <FieldBlock label="CẢM XÚC KHÁCH HÀNG" value={aiResult.sentiment} />
-                  <FieldBlock label="TÓM TẮT" value={aiResult.summary} isLast />
+                  <FieldBlock label="TÓM TẮT" value={aiResult.summary} />
+                  <FieldBlock label="HƯỚNG XỬ LÝ GỢI Ý" value={aiResult.suggestion} isLast />
                 </View>
               ) : null
             ) : ticket.lastAIError ? (
