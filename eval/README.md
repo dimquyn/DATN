@@ -75,6 +75,8 @@ GEMINI_API_KEY=xxxxx npm run eval:500 -- --batch 30
   này; báo cáo tự ghi số mẫu của từng chế độ và tách độ chính xác theo chế độ.
 - Độ trễ chỉ tính trên các lần gọi đơn lẻ (1 khiếu nại/lần, đúng như hệ thống).
 - Mẫu nào Gemini bỏ sót trong lô thì ghi lỗi và được gọi lại ở lần chạy sau.
+- Gemini báo 503 (quá tải): script chờ 30s, 60s, 2 phút, 4 phút rồi thử lại;
+  vẫn quá tải thì dừng, giữ tiến độ — 15–30 phút sau chạy lại lệnh cũ.
 
 Kết quả ghi ra (hậu tố `-500` cho tập 500 mẫu):
 - `eval/report.md`, `eval/report-500.md`: báo cáo đọc được ngay, copy thẳng

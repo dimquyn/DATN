@@ -35,6 +35,7 @@ const DELAY_BETWEEN_CALLS_MS = Number(process.env.EVAL_DELAY_MS ?? 4000); // né
 const MAX_RETRIES = 2;
 const QUOTA_WAIT_MS = 65_000; // 429 theo phút thì chờ hơn 1 phút là gọi lại được
 const QUOTA_MAX_WAITS = 2; // vẫn 429 sau 2 lần chờ → coi như hết quota trong ngày
+const OVERLOAD_WAITS_MS = [30_000, 60_000, 120_000, 240_000]; // 503 quá tải: chờ lâu dần, hết lượt thì dừng
 
 // ============================================================
 // Sao chép NGUYÊN VĂN từ functions/src/index.ts (buildPrompt +
@@ -142,6 +143,12 @@ function isQuotaError(error) {
   return /\b429\b|RESOURCE_EXHAUSTED|quota/i.test(text);
 }
 
+// Máy chủ Gemini quá tải (503) hoặc lỗi tạm thời phía Google: chờ rồi thử lại.
+function isOverloadError(error) {
+  const text = `${error?.status ?? ""} ${error?.message ?? error ?? ""}`;
+  return /\b(500|503)\b|UNAVAILABLE|overloaded|high demand/i.test(text);
+}
+
 // Key sai / chưa bật quyền gọi Gemini: gọi lại bao nhiêu lần cũng lỗi → dừng ngay.
 function isAuthError(error) {
   const text = `${error?.status ?? ""} ${error?.message ?? error ?? ""}`;
@@ -157,10 +164,11 @@ function sampleHash(sample) {
     .slice(0, 16);
 }
 
-// Gọi Gemini có thử lại. Trả về { ok, latencyMs, parsed } | { ok: false, quota, auth, error }.
+// Gọi Gemini có thử lại. Trả về { ok, latencyMs, parsed } | { ok: false, quota, auth, overload, error }.
 async function callGemini(ai, prompt, responseSchema, { wait = sleep } = {}) {
   let lastError;
   let quotaWaits = 0;
+  let overloadWaits = 0;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; ) {
     const startedAt = Date.now();
@@ -184,6 +192,14 @@ async function callGemini(ai, prompt, responseSchema, { wait = sleep } = {}) {
         await wait(QUOTA_WAIT_MS);
         continue; // chờ quota không tính vào số lần thử lại
       }
+      if (isOverloadError(error)) {
+        if (overloadWaits >= OVERLOAD_WAITS_MS.length) break;
+        const waitMs = OVERLOAD_WAITS_MS[overloadWaits];
+        overloadWaits += 1;
+        console.log(`\n  Gemini đang quá tải (503), chờ ${waitMs / 1000} giây rồi thử lại (lần ${overloadWaits}/${OVERLOAD_WAITS_MS.length})...`);
+        await wait(waitMs);
+        continue;
+      }
       attempt += 1;
       if (attempt <= MAX_RETRIES) await wait(DELAY_BETWEEN_CALLS_MS * 2);
     }
@@ -193,6 +209,7 @@ async function callGemini(ai, prompt, responseSchema, { wait = sleep } = {}) {
     ok: false,
     quota: isQuotaError(lastError),
     auth: isAuthError(lastError),
+    overload: isOverloadError(lastError),
     error: lastError instanceof Error ? lastError.message : String(lastError),
   };
 }
@@ -486,6 +503,7 @@ export async function runEvaluation({ ai, testSetPath, limit = Infinity, batch =
 
   let stoppedByQuota = false;
   let stoppedByAuth = false;
+  let stoppedByOverload = false;
   for (const [index, unit] of units.entries()) {
     const label = unit.length === 1 ? unit[0].id : `${unit[0].id}…${unit[unit.length - 1].id} (${unit.length} mẫu)`;
     process.stdout.write(`[${index + 1}/${units.length}] ${label} ... `);
@@ -496,6 +514,12 @@ export async function runEvaluation({ ai, testSetPath, limit = Infinity, batch =
       // lỗi do key chứ không do mẫu: không ghi vào tiến độ
       console.log(`LỖI: ${outcome.error}`);
       stoppedByAuth = true;
+      break;
+    }
+    if (outcome.overload) {
+      // Gemini quá tải chung, gọi tiếp các lô sau cũng lỗi → dừng, mẫu chưa chạy giữ nguyên để lần sau chạy
+      console.log(`LỖI: ${outcome.error}`);
+      stoppedByOverload = true;
       break;
     }
     if (!outcome.ok) {
@@ -551,13 +575,15 @@ export async function runEvaluation({ ai, testSetPath, limit = Infinity, batch =
         "Key Gemini API có dạng AIza...; key dạng AQ.... là key Google Cloud/Vertex AI, Gemini API không nhận. " +
         "Dùng key trong functions/.secret.local hoặc tạo tại https://aistudio.google.com/apikey rồi chạy lại đúng lệnh cũ."
     );
+  } else if (stoppedByOverload) {
+    console.log("\nĐã dừng vì máy chủ Gemini quá tải kéo dài. Tiến độ đã lưu — khoảng 15–30 phút sau chạy lại đúng lệnh cũ.");
   } else if (stoppedByQuota) {
     console.log("\nĐã dừng vì hết quota Gemini. Tiến độ đã lưu — để đến khi quota được cấp lại rồi chạy lại đúng lệnh cũ.");
   } else if (stats.evaluatedCount < testSet.length && !reportOnly) {
     console.log("\nChưa chạy hết tập test. Chạy lại đúng lệnh cũ để chạy tiếp từ chỗ dừng.");
   }
   console.log(`Đã ghi báo cáo vào ${basename(paths.report)}, kết quả từng mẫu vào ${basename(paths.results)}.`);
-  return { stats, stoppedByQuota, stoppedByAuth, paths };
+  return { stats, stoppedByQuota, stoppedByAuth, stoppedByOverload, paths };
 }
 
 async function main() {
