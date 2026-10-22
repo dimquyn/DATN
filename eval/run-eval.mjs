@@ -143,6 +143,17 @@ function isQuotaError(error) {
   return /\b429\b|RESOURCE_EXHAUSTED|quota/i.test(text);
 }
 
+// 429 do hết quota theo ngày (không phải theo phút): chờ vô ích, dừng luôn.
+function isDailyQuotaError(error) {
+  return /PerDay|per day/i.test(`${error?.message ?? error ?? ""}`);
+}
+
+// Số giây Gemini báo phải chờ đến khi được gọi lại (RetryInfo.retryDelay), nếu có.
+function retryAfterSeconds(error) {
+  const match = /"retryDelay"\s*:\s*"(\d+)s"/.exec(`${error?.message ?? error ?? ""}`);
+  return match ? Number(match[1]) : undefined;
+}
+
 // Máy chủ Gemini quá tải (503) hoặc lỗi tạm thời phía Google: chờ rồi thử lại.
 function isOverloadError(error) {
   const text = `${error?.status ?? ""} ${error?.message ?? error ?? ""}`;
@@ -186,7 +197,7 @@ async function callGemini(ai, prompt, responseSchema, { wait = sleep } = {}) {
       lastError = error;
       if (isAuthError(error)) break;
       if (isQuotaError(error)) {
-        if (quotaWaits >= QUOTA_MAX_WAITS) break;
+        if (isDailyQuotaError(error) || quotaWaits >= QUOTA_MAX_WAITS) break;
         quotaWaits += 1;
         console.log(`\n  Gemini báo 429 (giới hạn lượt gọi), chờ ${QUOTA_WAIT_MS / 1000} giây rồi thử lại...`);
         await wait(QUOTA_WAIT_MS);
@@ -210,6 +221,7 @@ async function callGemini(ai, prompt, responseSchema, { wait = sleep } = {}) {
     quota: isQuotaError(lastError),
     auth: isAuthError(lastError),
     overload: isOverloadError(lastError),
+    retryAfterSec: retryAfterSeconds(lastError),
     error: lastError instanceof Error ? lastError.message : String(lastError),
   };
 }
@@ -225,13 +237,18 @@ async function analyzeOne(ai, sample, options) {
 async function analyzeBatch(ai, samples, options) {
   const outcome = await callGemini(ai, buildBatchPrompt(samples), BATCH_RESPONSE_SCHEMA, options);
   if (!outcome.ok) return outcome;
-  const wanted = new Set(samples.map((sample) => sample.id));
+  // So id sau khi bỏ ký tự thừa, vì Gemini đôi khi trả "[TS404]" hoặc "ts404" thay cho "TS404"
+  const normalizeId = (id) => String(id ?? "").replace(/[^a-z0-9]/gi, "").toUpperCase();
+  const idByKey = new Map(samples.map((sample) => [normalizeId(sample.id), sample.id]));
+  const items = Array.isArray(outcome.parsed) ? outcome.parsed : [];
   const resultsById = {};
-  for (const item of Array.isArray(outcome.parsed) ? outcome.parsed : []) {
-    const valid = wanted.has(item?.id) && FIELDS.every((field) => LABELS[field].includes(item[field]));
-    if (valid && !resultsById[item.id]) resultsById[item.id] = Object.fromEntries(FIELDS.map((field) => [field, item[field]]));
+  for (const item of items) {
+    const id = idByKey.get(normalizeId(item?.id));
+    const valid = id && FIELDS.every((field) => LABELS[field].includes(item[field]));
+    if (valid && !resultsById[id]) resultsById[id] = Object.fromEntries(FIELDS.map((field) => [field, item[field]]));
   }
-  return { ok: true, latencyMs: outcome.latencyMs, resultsById };
+  const returned = `Gemini trả ${items.length} phần tử, id: ${items.slice(0, 3).map((item) => JSON.stringify(item?.id)).join(", ")}`;
+  return { ok: true, latencyMs: outcome.latencyMs, resultsById, returned };
 }
 
 function percentile(sortedValues, p) {
@@ -504,6 +521,7 @@ export async function runEvaluation({ ai, testSetPath, limit = Infinity, batch =
   let stoppedByQuota = false;
   let stoppedByAuth = false;
   let stoppedByOverload = false;
+  let quotaRetryAfterSec;
   for (const [index, unit] of units.entries()) {
     const label = unit.length === 1 ? unit[0].id : `${unit[0].id}…${unit[unit.length - 1].id} (${unit.length} mẫu)`;
     process.stdout.write(`[${index + 1}/${units.length}] ${label} ... `);
@@ -532,7 +550,7 @@ export async function runEvaluation({ ai, testSetPath, limit = Infinity, batch =
         const result = outcome.resultsById[sample.id];
         if (!result) {
           missing += 1;
-          progress.results[sample.id] = { ok: false, hash: sampleHash(sample), error: "Gemini không trả kết quả hợp lệ cho mẫu này trong lô", at };
+          progress.results[sample.id] = { ok: false, hash: sampleHash(sample), error: `Gemini không trả kết quả hợp lệ cho mẫu này trong lô (${outcome.returned})`, at };
           continue;
         }
         progress.results[sample.id] = { ok: true, mode: "batch", batchSize: unit.length, hash: sampleHash(sample), latencyMs: outcome.latencyMs, result, at };
@@ -553,6 +571,7 @@ export async function runEvaluation({ ai, testSetPath, limit = Infinity, batch =
 
     if (outcome.quota) {
       stoppedByQuota = true;
+      quotaRetryAfterSec = outcome.retryAfterSec;
       break;
     }
     if (index < units.length - 1) await wait(DELAY_BETWEEN_CALLS_MS);
@@ -572,13 +591,15 @@ export async function runEvaluation({ ai, testSetPath, limit = Infinity, batch =
   if (stoppedByAuth) {
     console.log(
       "\nĐã dừng vì Gemini từ chối API key (key sai, copy thiếu, hoặc không phải key Gemini API). " +
-        "Key Gemini API có dạng AIza...; key dạng AQ.... là key Google Cloud/Vertex AI, Gemini API không nhận. " +
         "Dùng key trong functions/.secret.local hoặc tạo tại https://aistudio.google.com/apikey rồi chạy lại đúng lệnh cũ."
     );
   } else if (stoppedByOverload) {
     console.log("\nĐã dừng vì máy chủ Gemini quá tải kéo dài. Tiến độ đã lưu — khoảng 15–30 phút sau chạy lại đúng lệnh cũ.");
   } else if (stoppedByQuota) {
-    console.log("\nĐã dừng vì hết quota Gemini. Tiến độ đã lưu — để đến khi quota được cấp lại rồi chạy lại đúng lệnh cũ.");
+    const resetAt = quotaRetryAfterSec
+      ? ` Gemini báo được gọi lại sau khoảng ${new Date(Date.now() + quotaRetryAfterSec * 1000).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })} (giờ Việt Nam).`
+      : "";
+    console.log(`\nĐã dừng vì hết quota Gemini.${resetAt} Tiến độ đã lưu — đến lúc đó chạy lại đúng lệnh cũ.`);
   } else if (stats.evaluatedCount < testSet.length && !reportOnly) {
     console.log("\nChưa chạy hết tập test. Chạy lại đúng lệnh cũ để chạy tiếp từ chỗ dừng.");
   }
