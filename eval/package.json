@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "eval": "node run-eval.mjs"
+    "eval": "node run-eval.mjs",
+    "eval:500": "node run-eval.mjs test-set-500.json"
   },
   "dependencies": {
     "@google/genai": "^2.10.0"
