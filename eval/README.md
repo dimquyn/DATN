@@ -58,6 +58,24 @@ GEMINI_API_KEY=xxxxx npm run eval:500 -- --reset
 - **Đổi độ trễ giữa 2 lần gọi**: mặc định 4000ms, đặt `EVAL_DELAY_MS=7000` nếu
   hay bị 429 theo phút ở gói miễn phí.
 
+## Chạy đủ tập lớn trong quota miễn phí: chế độ theo lô
+
+Gói miễn phí chỉ cho khoảng 20 lượt gọi/ngày, mỗi lượt 1 khiếu nại thì 500
+mẫu mất gần một tháng. Với `--batch N`, mỗi lần gọi gộp N khiếu nại và Gemini
+trả về mảng kết quả phân loại, nên 480 mẫu chỉ tốn 16 lượt gọi:
+
+```bash
+GEMINI_API_KEY=xxxxx npm run eval:500 -- --batch 30
+```
+
+- Giữ nguyên: model, vai trò nhân viên CSKH, 3 hướng dẫn phân loại và tập nhãn
+  (enum) của `category`/`priority`/`sentiment`, lấy từ prompt và schema hệ thống.
+- Khác với hệ thống thật: Gemini đọc nhiều khiếu nại trong 1 lần gọi và không
+  sinh `summary`/`suggestion`/`reply`. Khi trình bày kết quả phải ghi rõ điều
+  này; báo cáo tự ghi số mẫu của từng chế độ và tách độ chính xác theo chế độ.
+- Độ trễ chỉ tính trên các lần gọi đơn lẻ (1 khiếu nại/lần, đúng như hệ thống).
+- Mẫu nào Gemini bỏ sót trong lô thì ghi lỗi và được gọi lại ở lần chạy sau.
+
 Kết quả ghi ra (hậu tố `-500` cho tập 500 mẫu):
 - `eval/report.md`, `eval/report-500.md`: báo cáo đọc được ngay, copy thẳng
   vào báo cáo đồ án.

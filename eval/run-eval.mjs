@@ -17,6 +17,8 @@
 //   --limit N       chỉ gọi tối đa N mẫu trong lần chạy này (VD: --limit 20)
 //   --reset         xóa tiến độ cũ, chạy lại từ đầu
 //   --report-only   không gọi Gemini, chỉ tạo lại báo cáo từ tiến độ đã có
+//   --batch N       gộp N khiếu nại vào 1 lần gọi (chỉ lấy category/priority/
+//                   sentiment) để chạy đủ tập lớn trong quota miễn phí
 //
 // Kết quả ghi ra eval/report*.md (đọc được ngay) và eval/results*.json (dữ
 // liệu thô từng mẫu, dùng làm phụ lục nếu cần).
@@ -91,6 +93,46 @@ Chỉ trả về JSON, không thêm bất kỳ văn bản giải thích nào kh�
 const FIELDS = ["category", "priority", "sentiment"];
 const LABELS = Object.fromEntries(FIELDS.map((field) => [field, AI_RESPONSE_SCHEMA.properties[field].enum]));
 
+// ============================================================
+// Chế độ gọi theo lô (--batch N): gộp N khiếu nại vào 1 lần gọi, chỉ lấy 3
+// trường phân loại, để chạy đủ tập lớn trong quota miễn phí (~20 lượt/ngày).
+// Vai trò, 3 hướng dẫn phân loại và tập nhãn (enum) giữ đúng như prompt/schema
+// của hệ thống ở trên; khác biệt: không sinh summary/suggestion/reply và
+// Gemini đọc nhiều khiếu nại trong 1 lần — báo cáo ghi rõ mẫu nào chạy chế độ
+// này và tách riêng độ chính xác của từng chế độ.
+// ============================================================
+const BATCH_RESPONSE_SCHEMA = {
+  type: Type.ARRAY,
+  items: {
+    type: Type.OBJECT,
+    properties: {
+      id: { type: Type.STRING, description: "Mã khiếu nại, chép đúng như trong danh sách" },
+      ...Object.fromEntries(FIELDS.map((field) => [field, AI_RESPONSE_SCHEMA.properties[field]])),
+    },
+    required: ["id", ...FIELDS],
+  },
+};
+
+function buildBatchPrompt(samples) {
+  const list = samples
+    .map((sample) => `[${sample.id}] Khách hàng: ${sample.customerName} | Kênh gửi: ${sample.channel} | Nội dung khiếu nại: "${sample.content}"`)
+    .join("\n");
+  return `Bạn là một nhân viên chăm sóc khách hàng (CSKH) giàu kinh nghiệm của một doanh nghiệp viễn thông tại Việt Nam.
+
+Nhiệm vụ của bạn là đọc từng khiếu nại dưới đây và phân tích một cách khách quan, chuyên nghiệp. Mỗi khiếu nại được phân tích độc lập, không để khiếu nại này ảnh hưởng tới khiếu nại khác.
+
+Danh sách ${samples.length} khiếu nại:
+${list}
+
+Với MỖI khiếu nại, trả về một phần tử trong mảng JSON theo đúng cấu trúc đã được quy định, bao gồm:
+- id: mã khiếu nại trong ngoặc vuông, chép đúng nguyên văn.
+1. category: phân loại khiếu nại vào đúng 1 trong 5 nhóm cho trước.
+2. priority: đánh giá mức độ ưu tiên xử lý dựa trên mức độ ảnh hưởng và cảm xúc khách hàng.
+3. sentiment: nhận định thái độ/cảm xúc của khách hàng qua văn phong.
+
+Trả về đủ ${samples.length} phần tử, đúng thứ tự trong danh sách. Chỉ trả về JSON, không thêm bất kỳ văn bản giải thích nào khác.`;
+}
+
 function sleep(ms) {
   return new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
 }
@@ -115,9 +157,8 @@ function sampleHash(sample) {
     .slice(0, 16);
 }
 
-// Trả về { ok, latencyMs, result } | { ok: false, quota, auth, error }.
-async function analyzeOne(ai, sample, { wait = sleep } = {}) {
-  const prompt = buildPrompt(sample);
+// Gọi Gemini có thử lại. Trả về { ok, latencyMs, parsed } | { ok: false, quota, auth, error }.
+async function callGemini(ai, prompt, responseSchema, { wait = sleep } = {}) {
   let lastError;
   let quotaWaits = 0;
 
@@ -129,10 +170,10 @@ async function analyzeOne(ai, sample, { wait = sleep } = {}) {
         contents: prompt,
         config: {
           responseMimeType: "application/json",
-          responseSchema: AI_RESPONSE_SCHEMA,
+          responseSchema,
         },
       });
-      return { ok: true, latencyMs: Date.now() - startedAt, result: JSON.parse(response.text) };
+      return { ok: true, latencyMs: Date.now() - startedAt, parsed: JSON.parse(response.text) };
     } catch (error) {
       lastError = error;
       if (isAuthError(error)) break;
@@ -154,6 +195,26 @@ async function analyzeOne(ai, sample, { wait = sleep } = {}) {
     auth: isAuthError(lastError),
     error: lastError instanceof Error ? lastError.message : String(lastError),
   };
+}
+
+// 1 khiếu nại / 1 lần gọi, đúng prompt + schema của hệ thống.
+async function analyzeOne(ai, sample, options) {
+  const outcome = await callGemini(ai, buildPrompt(sample), AI_RESPONSE_SCHEMA, options);
+  return outcome.ok ? { ok: true, latencyMs: outcome.latencyMs, result: outcome.parsed } : outcome;
+}
+
+// N khiếu nại / 1 lần gọi. Trả về kết quả theo id; mẫu thiếu trong câu trả lời
+// thì không có trong resultsById (sẽ ghi lỗi và được gọi lại lần sau).
+async function analyzeBatch(ai, samples, options) {
+  const outcome = await callGemini(ai, buildBatchPrompt(samples), BATCH_RESPONSE_SCHEMA, options);
+  if (!outcome.ok) return outcome;
+  const wanted = new Set(samples.map((sample) => sample.id));
+  const resultsById = {};
+  for (const item of Array.isArray(outcome.parsed) ? outcome.parsed : []) {
+    const valid = wanted.has(item?.id) && FIELDS.every((field) => LABELS[field].includes(item[field]));
+    if (valid && !resultsById[item.id]) resultsById[item.id] = Object.fromEntries(FIELDS.map((field) => [field, item[field]]));
+  }
+  return { ok: true, latencyMs: outcome.latencyMs, resultsById };
 }
 
 function percentile(sortedValues, p) {
@@ -208,8 +269,11 @@ function computeStats(testSet, progressResults) {
   const latencies = [];
   const perSample = [];
 
+  const modeCounts = { single: 0, batch: 0 };
   for (const { sample, entry } of evaluated) {
-    latencies.push(entry.latencyMs);
+    const mode = entry.mode === "batch" ? "batch" : "single";
+    modeCounts[mode] += 1;
+    if (mode === "single") latencies.push(entry.latencyMs); // 1 lần gọi theo lô xử lý nhiều mẫu nên không tính độ trễ
     const match = {};
     for (const field of FIELDS) {
       const expected = sample[`expected_${field}`];
@@ -218,7 +282,7 @@ function computeStats(testSet, progressResults) {
       if (match[field]) correct[field] += 1;
       if (matrices[field][expected] && actual in matrices[field][expected]) matrices[field][expected][actual] += 1;
     }
-    const groupKeys = [];
+    const groupKeys = [mode === "batch" ? "Chế độ gọi: theo lô" : "Chế độ gọi: đơn lẻ (đúng prompt hệ thống)"];
     if (sample.style) groupKeys.push(`Kiểu viết: ${sample.style}`);
     if (typeof sample.hard === "boolean") groupKeys.push(sample.hard ? "Ca khó" : "Ca thường");
     for (const key of groupKeys) {
@@ -232,7 +296,8 @@ function computeStats(testSet, progressResults) {
       expected: Object.fromEntries(FIELDS.map((field) => [field, sample[`expected_${field}`]])),
       actual: Object.fromEntries(FIELDS.map((field) => [field, entry.result[field]])),
       match,
-      latencyMs: entry.latencyMs,
+      mode,
+      latencyMs: mode === "single" ? entry.latencyMs : undefined,
       summary: entry.result.summary,
       suggestion: entry.result.suggestion,
       reply: entry.result.reply,
@@ -242,6 +307,7 @@ function computeStats(testSet, progressResults) {
   const sortedLatencies = [...latencies].sort((a, b) => a - b);
   return {
     evaluatedCount: evaluated.length,
+    modeCounts,
     failed,
     correct,
     matrices,
@@ -252,6 +318,7 @@ function computeStats(testSet, progressResults) {
       p95: Math.round(percentile(sortedLatencies, 95)),
       min: sortedLatencies[0] ?? 0,
       max: sortedLatencies[sortedLatencies.length - 1] ?? 0,
+      count: latencies.length,
     },
   };
 }
@@ -268,6 +335,12 @@ function buildReport({ testSet, testSetName, stats, resultsFile }) {
     `- Số mẫu đã đánh giá: ${n}/${testSet.length}${remaining ? ` — CHƯA XONG, còn ${remaining} mẫu (chạy lại lệnh cũ để chạy tiếp)` : ""}`,
   ];
   if (remaining) lines.push("- Mẫu được chạy xen kẽ theo nhóm khiếu nại nên phần đã đánh giá chia đều 5 nhóm (xem cột Số mẫu ở bảng category).");
+  if (stats.modeCounts.batch) {
+    lines.push(
+      `- Chế độ gọi: ${stats.modeCounts.single} mẫu gọi đơn lẻ (đúng prompt hệ thống, 1 khiếu nại/lần gọi), ` +
+        `${stats.modeCounts.batch} mẫu gọi theo lô (nhiều khiếu nại/lần gọi, chỉ lấy 3 trường phân loại) — độ chính xác từng chế độ ở bảng "theo nhóm mẫu".`
+    );
+  }
   if (stats.failed.length) lines.push(`- Số mẫu lỗi ở lần gọi gần nhất: ${stats.failed.length} (sẽ được gọi lại ở lần chạy sau)`);
   lines.push(
     "",
@@ -299,7 +372,7 @@ function buildReport({ testSet, testSetName, stats, resultsFile }) {
   if (groupKeys.length) {
     lines.push(
       "",
-      "## Độ chính xác theo kiểu viết và độ khó",
+      "## Độ chính xác theo nhóm mẫu (chế độ gọi, kiểu viết, độ khó)",
       "",
       "| Nhóm mẫu | Số mẫu | category | priority | sentiment |",
       "| --- | --- | --- | --- | --- |",
@@ -313,6 +386,8 @@ function buildReport({ testSet, testSetName, stats, resultsFile }) {
   lines.push(
     "",
     "## Độ trễ phân tích (thời gian gọi Gemini API)",
+    "",
+    `Tính trên ${stats.latency.count} lần gọi đơn lẻ (mỗi lần 1 khiếu nại, đúng như hệ thống chạy thật).`,
     "",
     `- Trung bình: ${stats.latency.avg}ms`,
     `- p95: ${stats.latency.p95}ms`,
@@ -342,16 +417,18 @@ async function writeJsonAtomic(path, data) {
 }
 
 function parseArgs(argv) {
-  const options = { testSetPath: join(EVAL_DIR, "test-set.json"), limit: Infinity, reset: false, reportOnly: false };
+  const options = { testSetPath: join(EVAL_DIR, "test-set.json"), limit: Infinity, batch: 1, reset: false, reportOnly: false };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--limit") options.limit = Number(argv[++i]);
+    else if (arg === "--batch") options.batch = Number(argv[++i]);
     else if (arg === "--reset") options.reset = true;
     else if (arg === "--report-only") options.reportOnly = true;
     else if (!arg.startsWith("--")) options.testSetPath = resolve(EVAL_DIR, arg);
     else throw new Error(`Không hiểu tùy chọn: ${arg}`);
   }
   if (!(options.limit > 0)) throw new Error("--limit phải là số dương");
+  if (!Number.isInteger(options.batch) || options.batch < 1) throw new Error("--batch phải là số nguyên dương");
   return options;
 }
 
@@ -378,7 +455,7 @@ function outputPaths(testSetPath) {
   };
 }
 
-export async function runEvaluation({ ai, testSetPath, limit = Infinity, reset = false, reportOnly = false, wait = sleep }) {
+export async function runEvaluation({ ai, testSetPath, limit = Infinity, batch = 1, reset = false, reportOnly = false, wait = sleep }) {
   const testSet = JSON.parse(await readFile(testSetPath, "utf-8"));
   const paths = outputPaths(testSetPath);
   const testSetName = basename(testSetPath);
@@ -394,17 +471,25 @@ export async function runEvaluation({ ai, testSetPath, limit = Infinity, reset =
   const isDone = (sample) => progress.results[sample.id]?.ok && progress.results[sample.id].hash === sampleHash(sample);
   const pending = interleaveByCategory(testSet).filter((sample) => !isDone(sample));
   const toRun = reportOnly ? [] : pending.slice(0, limit);
+  const units = []; // mỗi phần tử = các mẫu của 1 lần gọi Gemini
+  for (let i = 0; i < toRun.length; i += batch) units.push(toRun.slice(i, i + batch));
 
   console.log(
     `Tập ${testSetName}: ${testSet.length} mẫu, đã xong ${testSet.length - pending.length}, còn ${pending.length}.` +
-      (toRun.length ? ` Lần này chạy ${toRun.length} mẫu (cách nhau ${DELAY_BETWEEN_CALLS_MS}ms).` : "")
+      (toRun.length
+        ? ` Lần này chạy ${toRun.length} mẫu trong ${units.length} lần gọi${batch > 1 ? ` (lô ${batch} mẫu/lần)` : ""}, cách nhau ${DELAY_BETWEEN_CALLS_MS}ms.`
+        : "")
   );
+
+  const markLine = (sample, result) =>
+    FIELDS.map((field) => `${result[field] === sample[`expected_${field}`] ? "✓" : "✗"} ${field}`).join(", ");
 
   let stoppedByQuota = false;
   let stoppedByAuth = false;
-  for (const [index, sample] of toRun.entries()) {
-    process.stdout.write(`[${index + 1}/${toRun.length}] ${sample.id} ... `);
-    const outcome = await analyzeOne(ai, sample, { wait });
+  for (const [index, unit] of units.entries()) {
+    const label = unit.length === 1 ? unit[0].id : `${unit[0].id}…${unit[unit.length - 1].id} (${unit.length} mẫu)`;
+    process.stdout.write(`[${index + 1}/${units.length}] ${label} ... `);
+    const outcome = batch > 1 ? await analyzeBatch(ai, unit, { wait }) : await analyzeOne(ai, unit[0], { wait });
     const at = new Date().toISOString();
 
     if (outcome.auth) {
@@ -413,13 +498,31 @@ export async function runEvaluation({ ai, testSetPath, limit = Infinity, reset =
       stoppedByAuth = true;
       break;
     }
-    if (outcome.ok) {
-      progress.results[sample.id] = { ok: true, hash: sampleHash(sample), latencyMs: outcome.latencyMs, result: outcome.result, at };
-      const marks = FIELDS.map((field) => `${outcome.result[field] === sample[`expected_${field}`] ? "✓" : "✗"} ${field}`);
-      console.log(`${marks.join(", ")} (${outcome.latencyMs}ms)`);
-    } else {
-      progress.results[sample.id] = { ok: false, hash: sampleHash(sample), error: outcome.error, at };
+    if (!outcome.ok) {
+      for (const sample of unit) progress.results[sample.id] = { ok: false, hash: sampleHash(sample), error: outcome.error, at };
       console.log(`LỖI: ${outcome.error}`);
+    } else if (batch > 1) {
+      const correct = Object.fromEntries(FIELDS.map((field) => [field, 0]));
+      let missing = 0;
+      for (const sample of unit) {
+        const result = outcome.resultsById[sample.id];
+        if (!result) {
+          missing += 1;
+          progress.results[sample.id] = { ok: false, hash: sampleHash(sample), error: "Gemini không trả kết quả hợp lệ cho mẫu này trong lô", at };
+          continue;
+        }
+        progress.results[sample.id] = { ok: true, mode: "batch", batchSize: unit.length, hash: sampleHash(sample), latencyMs: outcome.latencyMs, result, at };
+        for (const field of FIELDS) if (result[field] === sample[`expected_${field}`]) correct[field] += 1;
+      }
+      const got = unit.length - missing;
+      console.log(
+        `${FIELDS.map((field) => `${field} đúng ${correct[field]}/${got}`).join(", ")} (${outcome.latencyMs}ms)` +
+          (missing ? ` — thiếu ${missing} mẫu, sẽ gọi lại lần sau` : "")
+      );
+    } else {
+      const sample = unit[0];
+      progress.results[sample.id] = { ok: true, mode: "single", hash: sampleHash(sample), latencyMs: outcome.latencyMs, result: outcome.result, at };
+      console.log(`${markLine(sample, outcome.result)} (${outcome.latencyMs}ms)`);
     }
     progress.updatedAt = at;
     await writeJsonAtomic(paths.progress, progress); // lưu ngay để dừng giữa chừng không mất kết quả
@@ -428,7 +531,7 @@ export async function runEvaluation({ ai, testSetPath, limit = Infinity, reset =
       stoppedByQuota = true;
       break;
     }
-    if (index < toRun.length - 1) await wait(DELAY_BETWEEN_CALLS_MS);
+    if (index < units.length - 1) await wait(DELAY_BETWEEN_CALLS_MS);
   }
 
   const stats = computeStats(testSet, progress.results);
