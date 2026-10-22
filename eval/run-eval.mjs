@@ -259,6 +259,7 @@ function buildReport({ testSet, testSetName, stats, resultsFile }) {
     `- Tập test: ${testSetName} (${testSet.length} mẫu)`,
     `- Số mẫu đã đánh giá: ${n}/${testSet.length}${remaining ? ` — CHƯA XONG, còn ${remaining} mẫu (chạy lại lệnh cũ để chạy tiếp)` : ""}`,
   ];
+  if (remaining) lines.push("- Mẫu được chạy xen kẽ theo nhóm khiếu nại nên phần đã đánh giá chia đều 5 nhóm (xem cột Số mẫu ở bảng category).");
   if (stats.failed.length) lines.push(`- Số mẫu lỗi ở lần gọi gần nhất: ${stats.failed.length} (sẽ được gọi lại ở lần chạy sau)`);
   lines.push(
     "",
@@ -346,6 +347,18 @@ function parseArgs(argv) {
   return options;
 }
 
+// Thứ tự gọi xen kẽ 5 nhóm (mẫu 1 nhóm A, mẫu 1 nhóm B, ...) để nếu hết quota
+// giữa chừng thì phần đã chạy vẫn chia đều các nhóm, dùng được làm số liệu.
+function interleaveByCategory(testSet) {
+  const queues = LABELS.category.map((label) => testSet.filter((sample) => sample.expected_category === label));
+  const others = testSet.filter((sample) => !LABELS.category.includes(sample.expected_category));
+  const ordered = [];
+  for (let i = 0; queues.some((queue) => i < queue.length); i += 1) {
+    for (const queue of queues) if (i < queue.length) ordered.push(queue[i]);
+  }
+  return [...ordered, ...others];
+}
+
 // test-set.json → report.md / results.json / progress.json
 // test-set-500.json → report-500.md / results-500.json / progress-500.json
 function outputPaths(testSetPath) {
@@ -371,7 +384,7 @@ export async function runEvaluation({ ai, testSetPath, limit = Infinity, reset =
   }
 
   const isDone = (sample) => progress.results[sample.id]?.ok && progress.results[sample.id].hash === sampleHash(sample);
-  const pending = testSet.filter((sample) => !isDone(sample));
+  const pending = interleaveByCategory(testSet).filter((sample) => !isDone(sample));
   const toRun = reportOnly ? [] : pending.slice(0, limit);
 
   console.log(

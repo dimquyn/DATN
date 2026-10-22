@@ -42,6 +42,12 @@ GEMINI_API_KEY=xxxxx npm run eval:500 -- --reset
 - **Hết quota**: khi Gemini báo lỗi 429, script chờ khoảng 1 phút rồi thử lại
   (giới hạn theo phút). Thử 2 lần vẫn lỗi thì coi như hết quota trong ngày:
   script dừng, giữ nguyên tiến độ và in hướng dẫn chạy lại.
+- **Chạy hết hạn mức trong ngày**: bỏ `--limit`, script chạy đến khi xong 500
+  mẫu hoặc hết quota thì tự dừng. Quota theo ngày của Gemini được cấp lại lúc
+  0h giờ Thái Bình Dương (khoảng 14h–15h giờ Việt Nam), sau giờ đó chạy lại.
+- **Thứ tự chạy xen kẽ 5 nhóm**: mẫu được gọi lần lượt nhóm Gói cước, SIM,
+  Đường truyền, Thanh toán, Khác rồi lặp lại, nên dù chưa chạy hết 500 mẫu thì
+  phần đã chạy vẫn chia đều các nhóm.
 - **Báo cáo từng phần**: sau mỗi lần chạy, `report*.md` được tạo lại từ tất cả
   mẫu đã xong, có ghi rõ "đã đánh giá X/500". Chỉ lấy số liệu đưa vào báo cáo
   đồ án khi đã đủ 500/500.
