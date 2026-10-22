@@ -100,6 +100,12 @@ function isQuotaError(error) {
   return /\b429\b|RESOURCE_EXHAUSTED|quota/i.test(text);
 }
 
+// Key sai / chưa bật quyền gọi Gemini: gọi lại bao nhiêu lần cũng lỗi → dừng ngay.
+function isAuthError(error) {
+  const text = `${error?.status ?? ""} ${error?.message ?? error ?? ""}`;
+  return /\b(401|403)\b|API key not valid|API_KEY_INVALID|UNAUTHENTICATED|PERMISSION_DENIED/i.test(text);
+}
+
 // Băm nội dung gọi AI để biết mẫu có bị sửa sau lần chạy trước không — nhãn
 // đúng thì luôn đọc từ tập test hiện tại, nên chỉ sửa nhãn không cần chạy lại.
 function sampleHash(sample) {
@@ -109,7 +115,7 @@ function sampleHash(sample) {
     .slice(0, 16);
 }
 
-// Trả về { ok, latencyMs, result } | { ok: false, quota, error }.
+// Trả về { ok, latencyMs, result } | { ok: false, quota, auth, error }.
 async function analyzeOne(ai, sample, { wait = sleep } = {}) {
   const prompt = buildPrompt(sample);
   let lastError;
@@ -129,6 +135,7 @@ async function analyzeOne(ai, sample, { wait = sleep } = {}) {
       return { ok: true, latencyMs: Date.now() - startedAt, result: JSON.parse(response.text) };
     } catch (error) {
       lastError = error;
+      if (isAuthError(error)) break;
       if (isQuotaError(error)) {
         if (quotaWaits >= QUOTA_MAX_WAITS) break;
         quotaWaits += 1;
@@ -144,6 +151,7 @@ async function analyzeOne(ai, sample, { wait = sleep } = {}) {
   return {
     ok: false,
     quota: isQuotaError(lastError),
+    auth: isAuthError(lastError),
     error: lastError instanceof Error ? lastError.message : String(lastError),
   };
 }
@@ -393,11 +401,18 @@ export async function runEvaluation({ ai, testSetPath, limit = Infinity, reset =
   );
 
   let stoppedByQuota = false;
+  let stoppedByAuth = false;
   for (const [index, sample] of toRun.entries()) {
     process.stdout.write(`[${index + 1}/${toRun.length}] ${sample.id} ... `);
     const outcome = await analyzeOne(ai, sample, { wait });
     const at = new Date().toISOString();
 
+    if (outcome.auth) {
+      // lỗi do key chứ không do mẫu: không ghi vào tiến độ
+      console.log(`LỖI: ${outcome.error}`);
+      stoppedByAuth = true;
+      break;
+    }
     if (outcome.ok) {
       progress.results[sample.id] = { ok: true, hash: sampleHash(sample), latencyMs: outcome.latencyMs, result: outcome.result, at };
       const marks = FIELDS.map((field) => `${outcome.result[field] === sample[`expected_${field}`] ? "✓" : "✗"} ${field}`);
@@ -427,13 +442,19 @@ export async function runEvaluation({ ai, testSetPath, limit = Infinity, reset =
     console.log(`${field}: ${n ? pct(stats.correct[field] / n) : "0.0%"} (${stats.correct[field]}/${n})`);
   }
   console.log(`Latency trung bình: ${stats.latency.avg}ms, p95: ${stats.latency.p95}ms`);
-  if (stoppedByQuota) {
+  if (stoppedByAuth) {
+    console.log(
+      "\nĐã dừng vì Gemini từ chối API key (key sai, copy thiếu, hoặc không phải key Gemini API). " +
+        "Key Gemini API có dạng AIza...; key dạng AQ.... là key Google Cloud/Vertex AI, Gemini API không nhận. " +
+        "Dùng key trong functions/.secret.local hoặc tạo tại https://aistudio.google.com/apikey rồi chạy lại đúng lệnh cũ."
+    );
+  } else if (stoppedByQuota) {
     console.log("\nĐã dừng vì hết quota Gemini. Tiến độ đã lưu — để đến khi quota được cấp lại rồi chạy lại đúng lệnh cũ.");
   } else if (stats.evaluatedCount < testSet.length && !reportOnly) {
     console.log("\nChưa chạy hết tập test. Chạy lại đúng lệnh cũ để chạy tiếp từ chỗ dừng.");
   }
   console.log(`Đã ghi báo cáo vào ${basename(paths.report)}, kết quả từng mẫu vào ${basename(paths.results)}.`);
-  return { stats, stoppedByQuota, paths };
+  return { stats, stoppedByQuota, stoppedByAuth, paths };
 }
 
 async function main() {
@@ -441,6 +462,10 @@ async function main() {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey && !options.reportOnly) {
     console.error("Thiếu GEMINI_API_KEY. Chạy: GEMINI_API_KEY=xxxxx npm run eval");
+    process.exit(1);
+  }
+  if (!options.reportOnly && /^x+$/i.test(apiKey)) {
+    console.error('"xxxxx" chỉ là chỗ để điền — thay bằng API key Gemini thật của bạn (lấy tại https://aistudio.google.com/apikey).');
     process.exit(1);
   }
   const ai = options.reportOnly ? null : new GoogleGenAI({ apiKey });
