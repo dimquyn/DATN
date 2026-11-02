@@ -10,47 +10,47 @@ chương "Đánh giá hệ thống" trong báo cáo đồ án.
 cd eval
 npm install
 GEMINI_API_KEY=xxxxx npm run eval        # tập 20 mẫu: test-set.json
-GEMINI_API_KEY=xxxxx npm run eval:500    # tập 500 mẫu: test-set-500.json
+GEMINI_API_KEY=xxxxx npm run eval:229    # tập 229 mẫu: test-set-229.json
 ```
 
 Dùng đúng API key bạn đang dùng cho `functions` (trong `functions/.secret.local`
 hoặc secret đã set cho project thật). Mỗi mẫu mất khoảng 4 giây chờ cộng thời
-gian Gemini trả lời, nên 500 mẫu chạy liền một lượt mất gần 2 giờ.
+gian Gemini trả lời, nên 229 mẫu chạy liền một lượt mất khoảng 40 phút.
 
 ## Chạy nhiều lần, tiếp từ chỗ dừng
 
 Kết quả từng mẫu được lưu **ngay sau mỗi lần gọi** vào file tiến độ
-(`progress.json` cho tập 20 mẫu, `progress-500.json` cho tập 500 mẫu). Lỡ tắt
+(`progress.json` cho tập 20 mẫu, `progress-229.json` cho tập 229 mẫu). Lỡ tắt
 máy, mất mạng, bấm Ctrl+C hay hết quota thì chỉ cần **chạy lại đúng lệnh cũ**:
 script bỏ qua các mẫu đã xong, chỉ gọi Gemini cho mẫu còn lại và mẫu bị lỗi ở
 lần trước.
 
 ```bash
 # Chia nhỏ: mỗi lần chỉ chạy 20 mẫu (hợp với quota miễn phí theo ngày)
-GEMINI_API_KEY=xxxxx npm run eval:500 -- --limit 20
+GEMINI_API_KEY=xxxxx npm run eval:229 -- --limit 20
 
 # Hôm sau chạy lại y hệt, tự tiếp từ mẫu thứ 21
-GEMINI_API_KEY=xxxxx npm run eval:500 -- --limit 20
+GEMINI_API_KEY=xxxxx npm run eval:229 -- --limit 20
 
 # Chỉ tạo lại báo cáo từ tiến độ đã có, không gọi Gemini (không cần API key)
-npm run eval:500 -- --report-only
+npm run eval:229 -- --report-only
 
 # Xóa tiến độ, chạy lại từ đầu (VD sau khi sửa prompt thật)
-GEMINI_API_KEY=xxxxx npm run eval:500 -- --reset
+GEMINI_API_KEY=xxxxx npm run eval:229 -- --reset
 ```
 
 - **Hết quota**: khi Gemini báo lỗi 429, script chờ khoảng 1 phút rồi thử lại
   (giới hạn theo phút). Thử 2 lần vẫn lỗi thì coi như hết quota trong ngày:
   script dừng, giữ nguyên tiến độ và in hướng dẫn chạy lại.
-- **Chạy hết hạn mức trong ngày**: bỏ `--limit`, script chạy đến khi xong 500
+- **Chạy hết hạn mức trong ngày**: bỏ `--limit`, script chạy đến khi xong 229
   mẫu hoặc hết quota thì tự dừng. Quota theo ngày của Gemini được cấp lại lúc
   0h giờ Thái Bình Dương (khoảng 14h–15h giờ Việt Nam), sau giờ đó chạy lại.
 - **Thứ tự chạy xen kẽ 5 nhóm**: mẫu được gọi lần lượt nhóm Gói cước, SIM,
-  Đường truyền, Thanh toán, Khác rồi lặp lại, nên dù chưa chạy hết 500 mẫu thì
+  Đường truyền, Thanh toán, Khác rồi lặp lại, nên dù chưa chạy hết 229 mẫu thì
   phần đã chạy vẫn chia đều các nhóm.
 - **Báo cáo từng phần**: sau mỗi lần chạy, `report*.md` được tạo lại từ tất cả
-  mẫu đã xong, có ghi rõ "đã đánh giá X/500". Chỉ lấy số liệu đưa vào báo cáo
-  đồ án khi đã đủ 500/500.
+  mẫu đã xong, có ghi rõ "đã đánh giá X/229". Chỉ lấy số liệu đưa vào báo cáo
+  đồ án khi đã đủ 229/229.
 - **Sửa nhãn không cần chạy lại**: script chỉ lưu câu trả lời của Gemini, còn
   nhãn đúng luôn đọc từ tập test hiện tại. Sửa `expected_*` rồi chạy
   `--report-only` là có số liệu mới. Mẫu nào bị sửa `content`, `customerName`
@@ -60,12 +60,12 @@ GEMINI_API_KEY=xxxxx npm run eval:500 -- --reset
 
 ## Chạy đủ tập lớn trong quota miễn phí: chế độ theo lô
 
-Gói miễn phí chỉ cho khoảng 20 lượt gọi/ngày, mỗi lượt 1 khiếu nại thì 500
-mẫu mất gần một tháng. Với `--batch N`, mỗi lần gọi gộp N khiếu nại và Gemini
-trả về mảng kết quả phân loại, nên 480 mẫu chỉ tốn 16 lượt gọi:
+Gói miễn phí chỉ cho khoảng 20 lượt gọi/ngày, mỗi lượt 1 khiếu nại thì 229
+mẫu mất gần 12 ngày. Với `--batch N`, mỗi lần gọi gộp N khiếu nại và Gemini
+trả về mảng kết quả phân loại, nên 210 mẫu chỉ tốn 7 lượt gọi:
 
 ```bash
-GEMINI_API_KEY=xxxxx npm run eval:500 -- --batch 30
+GEMINI_API_KEY=xxxxx npm run eval:229 -- --batch 30
 ```
 
 - Giữ nguyên: model, vai trò nhân viên CSKH, 3 hướng dẫn phân loại và tập nhãn
@@ -78,19 +78,19 @@ GEMINI_API_KEY=xxxxx npm run eval:500 -- --batch 30
 - Gemini báo 503 (quá tải): script chờ 30s, 60s, 2 phút, 4 phút rồi thử lại;
   vẫn quá tải thì dừng, giữ tiến độ — 15–30 phút sau chạy lại lệnh cũ.
 
-Kết quả ghi ra (hậu tố `-500` cho tập 500 mẫu):
-- `eval/report.md`, `eval/report-500.md`: báo cáo đọc được ngay, copy thẳng
+Kết quả ghi ra (hậu tố `-229` cho tập 229 mẫu):
+- `eval/report.md`, `eval/report-229.md`: báo cáo đọc được ngay, copy thẳng
   vào báo cáo đồ án.
-- `eval/results.json`, `eval/results-500.json`: dữ liệu thô từng mẫu, kèm
+- `eval/results.json`, `eval/results-229.json`: dữ liệu thô từng mẫu, kèm
   summary/suggestion/reply, dùng làm phụ lục nếu cần.
 
 ## Tập test
 
 - `test-set.json`: 20 mẫu khởi điểm, phủ đều 5 category / 3 priority /
   4 sentiment.
-- `test-set-500.json`: 500 mẫu (TS001–TS500), mỗi category 100 mẫu, có đủ
-  kiểu viết (chuẩn, viết tắt, không dấu, dài, ngắn) và 75 ca khó nằm giữa hai
-  nhóm. 18 mẫu đầu (TS001–TS018) là 18 mẫu dùng trong báo cáo. Ngoài các
+- `test-set-229.json`: 229 mẫu, mỗi category 45–46 mẫu, có đủ kiểu viết
+  (chuẩn, viết tắt, không dấu, dài, ngắn) và 25 ca khó nằm giữa hai nhóm.
+  18 mẫu đầu (TS001–TS018) là 18 mẫu gốc tự gán nhãn trong báo cáo. Ngoài các
   trường bắt buộc, mỗi mẫu có thêm `style`, `hard`, `note`, `source`; báo cáo
   dùng `style` và `hard` để tính độ chính xác theo kiểu viết và theo độ khó.
 
@@ -98,7 +98,7 @@ Format một mẫu (thêm mẫu mới theo đúng format này):
 
 ```json
 {
-  "id": "TS501",
+  "id": "TS999",
   "customerName": "Tên khách hàng",
   "channel": "Website",
   "content": "Nội dung khiếu nại...",

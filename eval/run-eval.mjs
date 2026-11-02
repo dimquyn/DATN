@@ -5,10 +5,10 @@
 //   cd eval
 //   npm install
 //   GEMINI_API_KEY=xxxxx npm run eval                 # tập test-set.json
-//   GEMINI_API_KEY=xxxxx npm run eval:500             # tập test-set-500.json
+//   GEMINI_API_KEY=xxxxx npm run eval:229             # tập test-set-229.json
 //
 // Chạy tiếp từ chỗ dừng: kết quả từng mẫu được lưu ngay vào file progress
-// (progress.json, progress-500.json...). Chạy lại đúng lệnh cũ thì script bỏ
+// (progress.json, progress-229.json...). Chạy lại đúng lệnh cũ thì script bỏ
 // qua các mẫu đã xong, chỉ gọi Gemini cho các mẫu còn lại hoặc bị lỗi lần
 // trước. Khi gặp lỗi hết quota (429), script tự dừng, giữ nguyên tiến độ —
 // hôm sau chạy lại lệnh cũ là được.
@@ -479,7 +479,7 @@ function interleaveByCategory(testSet) {
 }
 
 // test-set.json → report.md / results.json / progress.json
-// test-set-500.json → report-500.md / results-500.json / progress-500.json
+// test-set-229.json → report-229.md / results-229.json / progress-229.json
 function outputPaths(testSetPath) {
   const suffix = basename(testSetPath, ".json").replace(/^test-set/, "");
   return {

@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "eval": "node run-eval.mjs",
-    "eval:500": "node run-eval.mjs test-set-500.json"
+    "eval:229": "node run-eval.mjs test-set-229.json"
   },
   "dependencies": {
     "@google/genai": "^2.10.0"
